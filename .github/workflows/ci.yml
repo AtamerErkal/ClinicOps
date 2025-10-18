@@ -34,7 +34,7 @@ jobs:
         # --show-source -> hatali kodu goster
         # --statistics -> istatistikleri goster
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-
+   
     - name: Test with pytest
       # 'PYTHONPATH' ortam değişkenini ekliyoruz.
       # Bu değişken, Python'a projenin kök dizinini ('.') arama yolu olarak gösterir.
