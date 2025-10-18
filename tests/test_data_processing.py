@@ -1,26 +1,37 @@
 # tests/test_data_processing.py
+import pytest
 import pandas as pd
 import os
-import pytest
-from scripts.data_processing import process_data
 
-# Create a fixture for dummy data
-@pytest.fixture
-def dummy_raw_data(tmp_path):
-    """Create a dummy raw CSV file in a temporary directory."""
-    raw_dir = tmp_path / "data" / "raw"
-    raw_dir.mkdir(parents=True)
-    raw_file = raw_dir / "Patient_Stay_Data.csv"
+@pytest.fixture(scope="session")
+def dummy_raw_data(tmp_path_factory):
+    """
+    Creates a temporary dummy CSV file mimicking the actual data structure
+    and returns the path to the file.
+    """
     
-    dummy_df = pd.DataFrame({
-        'patient_id': [1, 2, 3, 4, 5],
-        'age': [50, 60, 70, 80, 90],
-        'gender': ['M', 'F', 'M', 'F', 'M'],
-        'insurance': ['A', 'B', 'A', 'C', 'B'],
-        'stay_days': [5, 10, 3, 12, 8]
-    })
-    dummy_df.to_csv(raw_file, index=False)
-    return str(raw_file)
+    # 1. Klasör yapısını oluştur
+    data_dir = tmp_path_factory.mktemp("data") / "raw"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = data_dir / "Patient_Stay_Data.csv"
+
+    # 2. Gerçek veri setindeki kritik sütunları içeren sahte veri oluştur
+    data = {
+        'eid': [1, 2, 3, 4, 5],
+        'vdate': ['2023-01-01', '2023-01-01', '2023-01-02', '2023-01-03', '2023-01-03'],
+        'gender': ['F', 'M', 'F', 'M', 'F'],
+        'asthma': [1, 0, 1, 0, 1],
+        'hemo': [12.1, 15.5, 13.0, 14.5, 11.8],
+        'glucose': [100, 120, 95, 150, 110],
+        'facid': [1001, 1002, 1001, 1003, 1002],
+        # !!! KRİTİK GÜNCELLEME: HEDEF SÜTUNUNU EKLEDİK !!!
+        'lengthofstay': [2, 1, 3, 2, 4] 
+    }
+    
+    df = pd.DataFrame(data)
+    df.to_csv(raw_path, index=False)
+    
+    return str(raw_path)
 
 def test_process_data(dummy_raw_data, tmp_path):
     """Test the data processing script."""
