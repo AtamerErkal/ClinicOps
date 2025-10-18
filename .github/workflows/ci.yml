@@ -19,7 +19,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4 # 2. Adim: Python'u kurar
       with:
-        python-version: '3.9' # Ortamimizla ayni versiyonu kullaniyoruz
+        python-version: '3.11' # Ortamimizla ayni versiyonu kullaniyoruz
 
     - name: Install dependencies
       run: |
@@ -36,6 +36,10 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
     - name: Test with pytest
+      # 'PYTHONPATH' ortam değişkenini ekliyoruz.
+      # Bu değişken, Python'a projenin kök dizinini ('.') arama yolu olarak gösterir.
+      env:
+        PYTHONPATH: .
       run: |
         # 5. Adim: 'tests' klasorundeki tum testleri calistirir
         pytest
