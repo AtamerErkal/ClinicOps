@@ -1,0 +1,71 @@
+# .github/workflows/train.yml
+
+name: KlinikOps CD Pipeline (Model Training)
+
+on:
+  workflow_dispatch: # 1. Tetikleyici: GitHub arayuzunden manuel olarak "Run workflow" butonuna basinca calisir.
+  schedule:
+    - cron: '0 0 * * 1' # 2. Tetikleyici: Her Pazartesi gece yarisi (UTC) otomatik calisir.
+
+jobs:
+  train-model:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install azure-storage-blob # Azure'dan veri cekmek icin gerekli kutuphane
+        
+    - name: Create data directories
+      run: mkdir -p data/raw data/processed # script'lerin hata vermemesi icin bos klasorleri olustur
+
+    - name: Download Data from Azure Blob
+      env:
+        # 'secrets.AZURE_STORAGE_CONNECTION_STRING' GitHub ayarlarindan
+        # 'Repository > Settings > Secrets and variables > Actions' kismindan eklenmelidir.
+        AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+      run: |
+        # Bu, Azure'dan veri ceken bir Python script'i olurdu.
+        # Ornek: python scripts/download_data.py --container 'klinikops-data' --file 'Patient_Stay_Data.csv'
+        
+        # --- SIMULASYON ---
+        # Azure hesabi acmadan bu adimi simule etmek icin, veriyi public bir URL'den cekelim:
+        # NOT: Bu link calismayabilir, ornek amacli verilmistir.
+        echo "Simulating data download from a public URL..."
+        curl -L "httpsKA_GİBİ_BİR_YERDEN_VERİ_LİNKİ/Patient_Stay_Data.csv" -o data/raw/Patient_Stay_Data.csv
+        
+        # GERCEK PROJE ONCESI AKSIYON: 
+        # Veri setini manuel olarak indirip 'data/raw/Patient_Stay_Data.csv' yoluna koyun.
+        # Asagidaki satir, pipeline'in calismasi icin GECICI bir cozumdur.
+        # CI/CD'nin calismasi icin bu dosyayi olusturuyoruz:
+        echo "patient_id,age,gender,insurance,stay_days\n1,50,M,A,5\n2,60,F,B,10\n3,70,M,A,3\n4,80,F,C,12\n5,90,M,B,8" > data/raw/Patient_Stay_Data.csv
+        echo "WARNING: Using dummy data for training pipeline. Replace this step with real data download."
+
+    - name: Process Data
+      run: |
+        # 1. Pipeline Adimi: Veri isleme script'ini calistir
+        python scripts/data_processing.py
+
+    - name: Train Model
+      env:
+        # MLflow sunucunuz varsa (Azure ML, Databricks, vb.) buraya eklersiniz.
+        # Yoksa, egitim sonuclari 'mlruns' klasoru olarak runner'da kalir.
+        MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+        MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+      run: |
+        # 2. Pipeline Adimi: Model egitim script'ini calistir
+        python scripts/train.py
+        
+    # (Opsiyonel) 3. Adim: Modeli MLflow Registry'ye kaydet veya bir yere deploy et
+    # ...

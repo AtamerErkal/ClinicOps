@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+klinikops_env/
+
+# Data
+data/
+
+# MLflow
+mlruns/
+
+# Tests
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
