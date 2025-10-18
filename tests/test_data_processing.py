@@ -2,6 +2,7 @@
 import pytest
 import pandas as pd
 import os
+from scripts.data_processing import process_data
 
 @pytest.fixture(scope="session")
 def dummy_raw_data(tmp_path_factory):
