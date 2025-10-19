@@ -5,7 +5,7 @@ __pycache__/
 klinikops_env/
 
 # Data
-data/
+# data/
 
 # MLflow
 mlruns/
