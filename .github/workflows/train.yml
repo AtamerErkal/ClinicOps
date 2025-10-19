@@ -1,4 +1,6 @@
-name: KlinikOps CD Pipeline: Model Training
+# .github/workflows/model_train.yml
+
+name: Model Training and Deployment
 
 on:
   push:
@@ -8,7 +10,7 @@ on:
 jobs:
   train-model:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -25,13 +27,17 @@ jobs:
       - name: Prepare Mock Data
         run: |
           echo "Simulating data creation."
+          # data/processed klasörünü oluşturuyoruz
           mkdir -p data/processed
-
+          
       - name: Train Model and Log with MLflow
         env:
           PYTHONPATH: .
         run: |
+          # Veri işleme script'ini çalıştır (train.csv ve test.csv oluşturur)
           python scripts/data_processing.py
+          
+          # Model eğitim script'ini çalıştır (MLflow'a kaydeder)
           python scripts/train.py
 
       - name: Archive MLflow Artifacts
