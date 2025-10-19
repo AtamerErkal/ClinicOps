@@ -1,0 +1,41 @@
+name: KlinikOps CD Pipeline: Model Training
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  train-model:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Prepare Mock Data
+        run: |
+          echo "Simulating data creation."
+          mkdir -p data/processed
+
+      - name: Train Model and Log with MLflow
+        env:
+          PYTHONPATH: .
+        run: |
+          python scripts/data_processing.py
+          python scripts/train.py
+
+      - name: Archive MLflow Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlflow-run-artifacts
+          path: mlruns/
