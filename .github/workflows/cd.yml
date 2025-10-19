@@ -1,5 +1,3 @@
-# .github/workflows/cd.yml
-
 name: KlinikOps CD Pipeline: Model Training
 
 on:
@@ -10,7 +8,7 @@ on:
 jobs:
   train-model:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -22,22 +20,18 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          # 1. Adım: Bağımlılıkları kur
           pip install -r requirements.txt
 
-      - name: Prepare Mock Data (CI'da gerçek veriyi kullanmayız)
+      - name: Prepare Mock Data
         run: |
-          echo "Simulating data download/creation for model training."
+          echo "Simulating data creation."
           mkdir -p data/processed
           
       - name: Train Model and Log with MLflow
         env:
           PYTHONPATH: .
         run: |
-          # Veri işleme script'ini çalıştır (train.csv ve test.csv oluşturur)
           python scripts/data_processing.py
-          
-          # Model eğitim script'ini çalıştır (MLflow'a kaydeder)
           python scripts/train.py
 
       - name: Archive MLflow Artifacts
