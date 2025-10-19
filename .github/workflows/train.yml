@@ -1,5 +1,3 @@
-# .github/workflows/model_train.yml
-
 name: Model Training and Deployment
 
 on:
@@ -23,21 +21,16 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
-
-      - name: Prepare Mock Data
-        run: |
-          echo "Simulating data creation."
-          # data/processed klasörünü oluşturuyoruz
-          mkdir -p data/processed
           
       - name: Train Model and Log with MLflow
         env:
           PYTHONPATH: .
         run: |
-          # Veri işleme script'ini çalıştır (train.csv ve test.csv oluşturur)
+          # Checkout ile inen ham veri kullanılır.
+          # Veri işleme script'i çalışır (train.csv ve test.csv oluşturur)
           python scripts/data_processing.py
           
-          # Model eğitim script'ini çalıştır (MLflow'a kaydeder)
+          # Model eğitim script'i çalışır (MLflow'a kaydeder)
           python scripts/train.py
 
       - name: Archive MLflow Artifacts
