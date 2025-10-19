@@ -1,0 +1,66 @@
+# .github/workflows/cd.yml
+# Proje: KlinikOps - Hasta Yatış Süresi Tahmini
+# Amaç: Model eğitimini otomatikleştirmek (Continuous Deployment/Delivery)
+
+name: KlinikOps CD Pipeline: Model Training
+
+on:
+  push:
+    branches:
+      - main
+    # CI Pipeline'ı zaten çalıştığı için, sadece başarılı bir CI sonrasında çalışmasını da sağlayabiliriz.
+    # Ancak basit tutmak için şimdilik her push'ta çalışsın.
+
+jobs:
+  train-model:
+    runs-on: ubuntu-latest
+    
+    # Varsayılan MLflow tracking server'ı olarak GitHub Actions ortamını kullanacağız.
+    # MLflow artifacts (model dosyası) otomatik olarak GitHub Actions'a kaydedilecektir.
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9' # CI ile aynı Python versiyonu
+
+      - name: Install Dependencies
+        run: |
+          # 1. Adım: Bağımlılıkları kur
+          pip install -r requirements.txt
+
+      - name: Prepare Mock Data (CI'da gerçek veriyi kullanmayız)
+        # 2. Adım: CI/CD ortamında model eğitimi için gerçek veriyi indirmek yerine
+        # testlerimizde kullandığımız gibi, eğitim için yeterli büyüklükte bir sahte veri oluşturmalıyız.
+        # ANCAK bu aşamada, MLflow'a kaydı göstermek için *basitçe* test verisini kullanacağız.
+        # Bu, MLOps'ta ideal bir yaklaşım değildir, ancak süreci gösterir.
+        # GERÇEK MLOPS PROJESİNDE BURADA BİR VERİ KAYNAĞINDAN (S3, Snowflake vb.) VERİ ÇEKİLİR.
+        
+        # NOTE: Bu adım, modelin gerçek eğitimini simüle etmek için test verisini kullanır. 
+        # Gerçek uygulamada 'data/raw/Patient_Stay_Data.csv' dosyası S3/Blob storage gibi bir yerden çekilmelidir.
+        run: |
+          echo "Simulating data download/creation for model training."
+          # CI'da sahte veriyi oluşturan fonksiyonu burada çağırabiliriz
+          # Ancak pratik için, train.py'in çalışması için gerekli data/processed klasörünü oluşturalım:
+          mkdir -p data/processed
+          
+      - name: Train Model and Log with MLflow
+        # 3. Adım: Model eğitim script'ini çalıştır (MLflow'a kaydeder)
+        env:
+          PYTHONPATH: . # Modül bulma hatasını çözmek için ekledik
+        run: |
+          # Veri işleme script'ini çalıştır (train.csv ve test.csv oluşturur)
+          python scripts/data_processing.py
+          
+          # Model eğitim script'ini çalıştır (MLflow'a kaydeder)
+          python scripts/train.py
+
+      - name: Archive MLflow Artifacts
+        # 4. Adım: MLflow'un kaydettiği model dosyalarını (mlruns klasörü) depola
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlflow-run-artifacts
+          path: mlruns/
