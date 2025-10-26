@@ -1,36 +1,14 @@
-\# 🚀 KlinikOps MLOps Pipeline Project
+# 🚀 KlinikOps MLOps Pipeline Project
 
 
 
-\[!\[Pipeline Status](https://github.com/YOUR\_USERNAME/YOUR\_REPOSITORY/actions/workflows/mlops\_pipeline.yml/badge.svg)](https://github.com/YOUR\_USERNAME/YOUR\_REPOSITORY/actions/workflows/mlops\_pipeline.yml)
+[!\[Pipeline Status](https://github.com/YOUR\_USERNAME/YOUR\_REPOSITORY/actions/workflows/mlops\_pipeline.yml/badge.svg)](https://github.com/YOUR\_USERNAME/YOUR\_REPOSITORY/actions/workflows/mlops\_pipeline.yml)
 
-\[!\[Python 3.11](https://img.shields.io/badge/Python-3.11-blue?logo=python\&logoColor=white)](https://www.python.org/)
+[!\[Python 3.11](https://img.shields.io/badge/Python-3.11-blue?logo=python\&logoColor=white)](https://www.python.org/)
 
-\[!\[DVC](https://img.shields.io/badge/Data%20Versioning-DVC-green?logo=dataversioncontrol\&logoColor=white)](https://dvc.org/)
+[!\[DVC](https://img.shields.io/badge/Data%20Versioning-DVC-green?logo=dataversioncontrol\&logoColor=white)](https://dvc.org/)
 
-\[!\[Azure](https://img.shields.io/badge/Cloud-Azure-0078D4?logo=microsoftazure\&logoColor=white)](https://azure.microsoft.com/)
-
-
-
----
-
-
-
-\## 📋 Table of Contents
-
-
-
-\- \[About the Project](#-about-the-project)
-
-\- \[MLOps Lifecycle](#-mlops-lifecycle)
-
-\- \[Technology Stack](#-technology-stack)
-
-\- \[Pipeline Stages](#-pipeline-stages)
-
-\- \[Setup Instructions](#-setup-instructions)
-
-\- \[Usage](#-usage)
+[!\[Azure](https://img.shields.io/badge/Cloud-Azure-0078D4?logo=microsoftazure\&logoColor=white)](https://azure.microsoft.com/)
 
 
 
@@ -38,7 +16,29 @@
 
 
 
-\## 🎯 About the Project
+## 📋 Table of Contents
+
+
+
+- \[About the Project](#-about-the-project)
+
+- \[MLOps Lifecycle](#-mlops-lifecycle)
+
+- \[Technology Stack](#-technology-stack)
+
+- \[Pipeline Stages](#-pipeline-stages)
+
+- \[Setup Instructions](#-setup-instructions)
+
+- \[Usage](#-usage)
+
+
+
+---
+
+
+
+## 🎯 About the Project
 
 
 
@@ -50,19 +50,19 @@ The pipeline successfully combines code quality checks (CI), data version contro
 
 
 
-\### ✨ Key Features
+### ✨ Key Features
 
 
 
-\- 🔄 \*\*Continuous Integration\*\*: Automated code quality checks and testing
+- 🔄 \*\*Continuous Integration\*\*: Automated code quality checks and testing
 
-\- 📊 \*\*Data Versioning\*\*: DVC-powered data management with Azure Blob Storage
+- 📊 \*\*Data Versioning\*\*: DVC-powered data management with Azure Blob Storage
 
-\- 🤖 \*\*Automated Training\*\*: ML model training with MLflow tracking
+- 🤖 \*\*Automated Training\*\*: ML model training with MLflow tracking
 
-\- 📦 \*\*Artifact Management\*\*: GitHub Actions artifacts for deployment readiness
+- 📦 \*\*Artifact Management\*\*: GitHub Actions artifacts for deployment readiness
 
-\- ✅ \*\*Quality Assurance\*\*: PEP8 compliance and comprehensive unit tests
+- ✅ \*\*Quality Assurance\*\*: PEP8 compliance and comprehensive unit tests
 
 
 
@@ -70,7 +70,7 @@ The pipeline successfully combines code quality checks (CI), data version contro
 
 
 
-\## 🔄 MLOps Lifecycle
+## 🔄 MLOps Lifecycle
 
 
 
@@ -116,7 +116,7 @@ graph LR
 
 
 
-\### The MLOps Cycle
+### The MLOps Cycle
 
 
 
@@ -156,7 +156,7 @@ graph LR
 
 
 
-\## 🛠️ Technology Stack
+## 🛠️ Technology Stack
 
 
 
@@ -184,7 +184,7 @@ graph LR
 
 
 
-\## 📊 Pipeline Stages
+## 📊 Pipeline Stages
 
 
 
@@ -216,7 +216,7 @@ The pipeline consists of five main stages that execute automatically on every pu
 
 
 
-\### Detailed Stage Breakdown
+### Detailed Stage Breakdown
 
 
 
@@ -240,11 +240,11 @@ The pipeline consists of five main stages that execute automatically on every pu
 
 
 
-\## ⚙️ Setup Instructions
+## ⚙️ Setup Instructions
 
 
 
-\### Prerequisites
+### Prerequisites
 
 
 
@@ -252,17 +252,17 @@ Before you begin, ensure you have the following installed:
 
 
 
-\- 🐍 \*\*Python 3.11\*\*
+- 🐍 \*\*Python 3.11\*\*
 
-\- 📦 \*\*Git\*\*
+- 📦 \*\*Git\*\*
 
-\- 📊 \*\*DVC\*\*
+- 📊 \*\*DVC\*\*
 
-\- ☁️ \*\*Azure Account\*\* with Storage Account and Access Key
+- ☁️ \*\*Azure Account\*\* with Storage Account and Access Key
 
 
 
-\### 1. Clone the Repository
+### 1. Clone the Repository
 
 
 
@@ -276,7 +276,7 @@ cd YOUR\_REPOSITORY
 
 
 
-\### 2. Environment Setup
+### 2. Environment Setup
 
 
 
@@ -286,7 +286,7 @@ Create and activate a virtual environment, then install dependencies:
 
 ```bash
 
-\# Create and activate virtual environment
+# Create and activate virtual environment
 
 conda create -n klinikops\_env python=3.11
 
@@ -294,7 +294,7 @@ conda activate klinikops\_env
 
 
 
-\# Install all dependencies including DVC Azure extension
+# Install all dependencies including DVC Azure extension
 
 pip install -r requirements.txt
 
@@ -304,17 +304,17 @@ pip install 'dvc\[azure]'
 
 
 
-\### 3. Initialize DVC and Configure Azure Remote
+### 3. Initialize DVC and Configure Azure Remote
 
 
 
-\#### Step A: Initialize DVC
+#### Step A: Initialize DVC
 
 
 
 ```bash
 
-\# Initialize DVC (creates the .dvc/ directory)
+# Initialize DVC (creates the .dvc/ directory)
 
 dvc init
 
@@ -322,7 +322,7 @@ dvc init
 
 
 
-\#### Step B: Add Azure Remote
+#### Step B: Add Azure Remote
 
 
 
@@ -332,7 +332,7 @@ Configure the Azure Blob Storage remote using the correct URI format:
 
 ```bash
 
-\# Define the Azure Remote URL
+# Define the Azure Remote URL
 
 dvc remote add -d azure\_remote azure://clinicopsdvcstorage2025/dvc-remote
 
@@ -340,17 +340,17 @@ dvc remote add -d azure\_remote azure://clinicopsdvcstorage2025/dvc-remote
 
 
 
-\*\*URI Format Explanation:\*\*
+*\*URI Format Explanation:\*\*
 
-\- `azure://` - Protocol for Azure Blob Storage
+- `azure://` - Protocol for Azure Blob Storage
 
-\- `clinicopsdvcstorage2025` - Your Storage Account name
+- `clinicopsdvcstorage2025` - Your Storage Account name
 
-\- `dvc-remote` - Your container name
+- `dvc-remote` - Your container name
 
 
 
-\#### Step C: Configure Azure Authentication
+#### Step C: Configure Azure Authentication
 
 
 
@@ -380,9 +380,9 @@ nano .dvc/config.local
 
 ```ini
 
-\# .dvc/config.local (IGNORED BY GIT)
+# .dvc/config.local (IGNORED BY GIT)
 
-\['remote "azure\_remote"']
+['remote "azure\_remote"']
 
 &nbsp;   account\_name = clinicopsdvcstorage2025
 
@@ -410,11 +410,11 @@ dvc config --local -l
 
 
 
-\## 🚀 Usage
+## 🚀 Usage
 
 
 
-\### Pull Data from Azure
+### Pull Data from Azure
 
 
 
@@ -426,7 +426,7 @@ dvc pull
 
 
 
-\### Run Data Processing
+### Run Data Processing
 
 
 
@@ -438,7 +438,7 @@ python scripts/data\_processing.py
 
 
 
-\### Train the Model
+### Train the Model
 
 
 
@@ -450,7 +450,7 @@ python scripts/train.py
 
 
 
-\### Run Tests
+### Run Tests
 
 
 
@@ -462,7 +462,7 @@ pytest tests/
 
 
 
-\### Check Code Quality
+### Check Code Quality
 
 
 
@@ -478,7 +478,7 @@ flake8 scripts/ tests/
 
 
 
-\## 📁 Project Structure
+## 📁 Project Structure
 
 
 
@@ -520,7 +520,7 @@ klinikops-mlops/
 
 
 
-\## 🤝 Contributing
+## 🤝 Contributing
 
 
 
@@ -544,7 +544,7 @@ Contributions are welcome! Please follow these steps:
 
 
 
-\## 📄 License
+## 📄 License
 
 
 
@@ -556,7 +556,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 
 
-\## 📧 Contact
+## 📧 Contact
 
 
 
@@ -572,7 +572,7 @@ For questions or support, please open an issue in this repository.
 
 
 
-\*\*Made with ❤️ for Healthcare ML Operations\*\*
+*\*Made with ❤️ for Healthcare ML Operations\*\*
 
 
 
