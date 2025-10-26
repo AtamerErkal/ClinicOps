@@ -9,7 +9,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define paths
-RAW_DATA_PATH = os.path.join('data', 'raw', 'Patient_Stay_Data.csv')
+RAW_DATA_PATH = os.path.join('data', 'raw', 'Patient_Stay_Data.csv.dvc')
 PROCESSED_DATA_DIR = os.path.join('data', 'processed')
 TRAIN_PATH = os.path.join(PROCESSED_DATA_DIR, 'train.csv')
 TEST_PATH = os.path.join(PROCESSED_DATA_DIR, 'test.csv')
