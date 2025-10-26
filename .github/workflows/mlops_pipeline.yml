@@ -48,10 +48,11 @@ jobs:
       # --- CD/ML STAGE (DATA PULL & TRAINING) ---
 
       - name: 6. DVC Pull Data
-        # Downloads data files tracked by DVC from the remote storage 
-        # (e.g., Azure Blob, S3) based on dvc.lock.
-        # Requires DVC to be configured and authenticated to the remote.
-        run: dvc pull
+        # GitHub Secrets'ı kullanarak Azure kimlik bilgilerini ortam değişkenlerine yüklüyoruz
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        run: |
 
       - name: 7. Run Preprocessing and Train Model
         env:
