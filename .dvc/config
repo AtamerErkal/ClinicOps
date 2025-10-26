@@ -1,6 +1,8 @@
-['core']
-    remote = azure
+[core]
+    remote = azure_remote
 
-['remote "azure"']
-    url = azure://dvc-remote
+['remote "azure_remote"']
+   
+    url = azure://clinicopsdvcstorage2025/dvc-remote
+    account_name = clinicopsdvcstorage2025
 
