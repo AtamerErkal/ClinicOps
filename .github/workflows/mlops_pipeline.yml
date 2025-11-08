@@ -50,14 +50,17 @@ jobs:
 
       - name: 6. DVC Pull Data
         env:
-          # VEYA SADECE DVC'nin BEKLEDİĞİ EK DEĞİŞKENLERİ DE ZORLUYORUZ:
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
           DVC_REMOTE_AZURE_REMOTE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           DVC_REMOTE_AZURE_REMOTE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
-          echo "Attempting DVC Pull from Azure..."
-          dvc pull
+          echo "Attempting DVC Pull from Azure (Verbose Mode)..."
+          # -v: Ayrıntılı çıktı, --force: Zorla indirme (genelde gerekmez ama deneme amaçlı)
+          dvc pull -v 
+          
+          # Verinin gerçekten indirildiğini kontrol edelim (isteğe bağlı ama faydalı)
+          ls -l data/raw/
 
       - name: 7. Run Preprocessing and Train Model
         env:
