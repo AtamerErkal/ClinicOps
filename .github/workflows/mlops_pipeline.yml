@@ -55,11 +55,11 @@ jobs:
           DVC_REMOTE_AZURE_REMOTE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           DVC_REMOTE_AZURE_REMOTE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
-          echo "Attempting DVC Pull from Azure (Verbose Mode)..."
-          # -v: Ayrıntılı çıktı, --force: Zorla indirme (genelde gerekmez ama deneme amaçlı)
-          dvc pull -v 
+          echo "Attempting DVC Pull from Azure (Forced Mode)..."
+          # --force komutu ile DVC'yi yerel olarak güncel olduğunu düşünse bile indirmeye zorluyoruz.
+          dvc pull -v --force
           
-          # Verinin gerçekten indirildiğini kontrol edelim (isteğe bağlı ama faydalı)
+          echo "Veri Dizin Kontrolü:"
           ls -l data/raw/
 
       - name: 7. Run Preprocessing and Train Model
