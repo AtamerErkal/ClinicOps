@@ -1,5 +1,3 @@
-# scripts/train.py
-
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import OneHotEncoder
