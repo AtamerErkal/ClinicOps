@@ -7,19 +7,19 @@
 
 
 
-\[!\\\[Pipeline Status](https://github.com/YOUR\\\_USERNAME/YOUR\\\_REPOSITORY/actions/workflows/mlops\\\_pipeline.yml/badge.svg)](https://github.com/YOUR\\\_USERNAME/YOUR\\\_REPOSITORY/actions/workflows/mlops\\\_pipeline.yml)
+[!\\\[Pipeline Status](https://github.com/YOUR\\\_USERNAME/YOUR\\\_REPOSITORY/actions/workflows/mlops\\\_pipeline.yml/badge.svg)](https://github.com/YOUR\\\_USERNAME/YOUR\\\_REPOSITORY/actions/workflows/mlops\\\_pipeline.yml)
 
 
 
-\[!\\\[Python 3.11](https://img.shields.io/badge/Python-3.11-blue?logo=python\\\&logoColor=white)](https://www.python.org/)
+[!\\\[Python 3.11](https://img.shields.io/badge/Python-3.11-blue?logo=python\\\&logoColor=white)](https://www.python.org/)
 
 
 
-\[!\\\[DVC](https://img.shields.io/badge/Data%20Versioning-DVC-green?logo=dataversioncontrol\\\&logoColor=white)](https://dvc.org/)
+[!\\\[DVC](https://img.shields.io/badge/Data%20Versioning-DVC-green?logo=dataversioncontrol\\\&logoColor=white)](https://dvc.org/)
 
 
 
-\[!\\\[Azure](https://img.shields.io/badge/Cloud-Azure-0078D4?logo=microsoftazure\\\&logoColor=white)](https://azure.microsoft.com/)
+[!\\\[Azure](https://img.shields.io/badge/Cloud-Azure-0078D4?logo=microsoftazure\\\&logoColor=white)](https://azure.microsoft.com/)
 
 
 
