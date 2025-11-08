@@ -1,7 +1,8 @@
-\# 🚀 KlinikOps MLOps Pipeline Project
+# 🚀 KlinikOps MLOps Pipeline Project
 
 
 
+<<<<<<< HEAD
 
 
 
@@ -23,6 +24,15 @@
 
 
 
+=======
+[!\[Pipeline Status](https://github.com/YOUR\_USERNAME/YOUR\_REPOSITORY/actions/workflows/mlops\_pipeline.yml/badge.svg)](https://github.com/YOUR\_USERNAME/YOUR\_REPOSITORY/actions/workflows/mlops\_pipeline.yml)
+
+[!\[Python 3.11](https://img.shields.io/badge/Python-3.11-blue?logo=python\&logoColor=white)](https://www.python.org/)
+
+[!\[DVC](https://img.shields.io/badge/Data%20Versioning-DVC-green?logo=dataversioncontrol\&logoColor=white)](https://dvc.org/)
+
+[!\[Azure](https://img.shields.io/badge/Cloud-Azure-0078D4?logo=microsoftazure\&logoColor=white)](https://azure.microsoft.com/)
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -30,6 +40,7 @@
 
 
 
+<<<<<<< HEAD
 
 
 
@@ -67,6 +78,23 @@
 
 
 
+=======
+## 📋 Table of Contents
+
+
+
+- \[About the Project](#-about-the-project)
+
+- \[MLOps Lifecycle](#-mlops-lifecycle)
+
+- \[Technology Stack](#-technology-stack)
+
+- \[Pipeline Stages](#-pipeline-stages)
+
+- \[Setup Instructions](#-setup-instructions)
+
+- \[Usage](#-usage)
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -74,11 +102,15 @@
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \## 🎯 About the Project
+=======
+## 🎯 About the Project
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -102,10 +134,11 @@ The pipeline successfully combines code quality checks (CI), data version contro
 
 
 
-\### ✨ Key Features
+### ✨ Key Features
 
 
 
+<<<<<<< HEAD
 
 
 
@@ -131,6 +164,17 @@ The pipeline successfully combines code quality checks (CI), data version contro
 
 
 
+=======
+- 🔄 \*\*Continuous Integration\*\*: Automated code quality checks and testing
+
+- 📊 \*\*Data Versioning\*\*: DVC-powered data management with Azure Blob Storage
+
+- 🤖 \*\*Automated Training\*\*: ML model training with MLflow tracking
+
+- 📦 \*\*Artifact Management\*\*: GitHub Actions artifacts for deployment readiness
+
+- ✅ \*\*Quality Assurance\*\*: PEP8 compliance and comprehensive unit tests
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -138,11 +182,15 @@ The pipeline successfully combines code quality checks (CI), data version contro
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \## 🔄 MLOps Lifecycle
+=======
+## 🔄 MLOps Lifecycle
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -230,11 +278,15 @@ graph LR
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \### The MLOps Cycle
+=======
+### The MLOps Cycle
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -310,11 +362,15 @@ graph LR
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \## 🛠️ Technology Stack
+=======
+## 🛠️ Technology Stack
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -366,11 +422,15 @@ graph LR
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \## 📊 Pipeline Stages
+=======
+## 📊 Pipeline Stages
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -430,11 +490,15 @@ The pipeline consists of five main stages that execute automatically on every pu
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \### Detailed Stage Breakdown
+=======
+### Detailed Stage Breakdown
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -478,6 +542,7 @@ The pipeline consists of five main stages that execute automatically on every pu
 
 
 
+<<<<<<< HEAD
 
 
 
@@ -491,6 +556,13 @@ The pipeline consists of five main stages that execute automatically on every pu
 
 
 \### Prerequisites
+=======
+## ⚙️ Setup Instructions
+
+
+
+### Prerequisites
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -502,6 +574,7 @@ Before you begin, ensure you have the following installed:
 
 
 
+<<<<<<< HEAD
 
 
 
@@ -523,10 +596,19 @@ Before you begin, ensure you have the following installed:
 
 
 
+=======
+- 🐍 \*\*Python 3.11\*\*
+
+- 📦 \*\*Git\*\*
+
+- 📊 \*\*DVC\*\*
+
+- ☁️ \*\*Azure Account\*\* with Storage Account and Access Key
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
-\### 1. Clone the Repository
+### 1. Clone the Repository
 
 
 
@@ -550,11 +632,15 @@ cd YOUR\\\_REPOSITORY
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \### 2. Environment Setup
+=======
+### 2. Environment Setup
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -572,9 +658,13 @@ Create and activate a virtual environment, then install dependencies:
 
 ```bash
 
+<<<<<<< HEAD
 
 
 \# Create and activate virtual environment
+=======
+# Create and activate virtual environment
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -590,7 +680,7 @@ conda activate klinikops\\\_env
 
 
 
-\# Install all dependencies including DVC Azure extension
+# Install all dependencies including DVC Azure extension
 
 
 
@@ -606,6 +696,7 @@ pip install 'dvc\\\[azure]'
 
 
 
+<<<<<<< HEAD
 
 
 
@@ -619,6 +710,13 @@ pip install 'dvc\\\[azure]'
 
 
 \#### Step A: Initialize DVC
+=======
+### 3. Initialize DVC and Configure Azure Remote
+
+
+
+#### Step A: Initialize DVC
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -628,9 +726,13 @@ pip install 'dvc\\\[azure]'
 
 ```bash
 
+<<<<<<< HEAD
 
 
 \# Initialize DVC (creates the .dvc/ directory)
+=======
+# Initialize DVC (creates the .dvc/ directory)
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -642,11 +744,15 @@ dvc init
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \#### Step B: Add Azure Remote
+=======
+#### Step B: Add Azure Remote
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -664,9 +770,13 @@ Configure the Azure Blob Storage remote using the correct URI format:
 
 ```bash
 
+<<<<<<< HEAD
 
 
 \# Define the Azure Remote URL
+=======
+# Define the Azure Remote URL
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -678,6 +788,7 @@ dvc remote add -d azure\\\_remote azure://clinicopsdvcstorage2025/dvc-remote
 
 
 
+<<<<<<< HEAD
 
 
 
@@ -685,9 +796,13 @@ dvc remote add -d azure\\\_remote azure://clinicopsdvcstorage2025/dvc-remote
 \*\\\*URI Format Explanation:\\\*\\\*
 
 
+=======
+*\*URI Format Explanation:\*\*
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
-\- `azure://` - Protocol for Azure Blob Storage
+- `azure://` - Protocol for Azure Blob Storage
 
+<<<<<<< HEAD
 
 
 \- `clinicopsdvcstorage2025` - Your Storage Account name
@@ -703,6 +818,15 @@ dvc remote add -d azure\\\_remote azure://clinicopsdvcstorage2025/dvc-remote
 
 
 \#### Step C: Configure Azure Authentication
+=======
+- `clinicopsdvcstorage2025` - Your Storage Account name
+
+- `dvc-remote` - Your container name
+
+
+
+#### Step C: Configure Azure Authentication
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -760,10 +884,16 @@ nano .dvc/config.local
 
 ```ini
 
+<<<<<<< HEAD
 
 
 \# .dvc/config.local (IGNORED BY GIT)
 
+=======
+# .dvc/config.local (IGNORED BY GIT)
+
+['remote "azure\_remote"']
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 \['remote "azure\\\_remote"']
@@ -818,6 +948,7 @@ dvc config --local -l
 
 
 
+<<<<<<< HEAD
 
 
 
@@ -831,6 +962,13 @@ dvc config --local -l
 
 
 \### Pull Data from Azure
+=======
+## 🚀 Usage
+
+
+
+### Pull Data from Azure
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -850,11 +988,15 @@ dvc pull
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \### Run Data Processing
+=======
+### Run Data Processing
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -874,11 +1016,15 @@ python scripts/data\\\_processing.py
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \### Train the Model
+=======
+### Train the Model
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -898,11 +1044,15 @@ python scripts/train.py
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \### Run Tests
+=======
+### Run Tests
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -922,11 +1072,15 @@ pytest tests/
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \### Check Code Quality
+=======
+### Check Code Quality
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -954,11 +1108,15 @@ flake8 scripts/ tests/
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \## 📁 Project Structure
+=======
+## 📁 Project Structure
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -1038,11 +1196,15 @@ klinikops-mlops/
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \## 🤝 Contributing
+=======
+## 🤝 Contributing
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -1086,11 +1248,15 @@ Contributions are welcome! Please follow these steps:
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \## 📄 License
+=======
+## 📄 License
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -1110,11 +1276,15 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 
 
+<<<<<<< HEAD
 
 
 
 
 \## 📧 Contact
+=======
+## 📧 Contact
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
@@ -1142,6 +1312,10 @@ For questions or support, please open an issue in this repository.
 
 
 
+<<<<<<< HEAD
+=======
+*\*Made with ❤️ for Healthcare ML Operations\*\*
+>>>>>>> 11645a20989bac1415d4090c23e8df8c78bdf0eb
 
 
 
