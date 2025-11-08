@@ -1,5 +1,3 @@
-# scripts/data_processing.py
-
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import os
@@ -9,7 +7,8 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define paths
-RAW_DATA_PATH = os.path.join('data', 'raw', 'Patient_Stay_Data.csv.dvc')
+# HATA DÜZELTİLDİ: .dvc uzantısı KALDIRILDI. Artık verinin kendisini okuyacak.
+RAW_DATA_PATH = os.path.join('data', 'raw', 'Patient_Stay_Data.csv')
 PROCESSED_DATA_DIR = os.path.join('data', 'processed')
 TRAIN_PATH = os.path.join(PROCESSED_DATA_DIR, 'train.csv')
 TEST_PATH = os.path.join(PROCESSED_DATA_DIR, 'test.csv')
@@ -52,7 +51,8 @@ def process_data(raw_path, train_path, test_path, test_size=0.2):
         logging.info(f"Test data shape: {test_df.shape}")
 
     except FileNotFoundError:
-        logging.error(f"Error: Raw data file not found at {raw_path}")
+        # Hata yakalama mesajı güncellendi
+        logging.error(f"Error: Raw data file not found at {raw_path}. Did 'dvc pull' run successfully?")
     except Exception as e:
         logging.error(f"An error occurred during data processing: {e}")
         
