@@ -49,22 +49,28 @@ jobs:
       # --- CD/ML STAGE (DATA PULL & TRAINING) ---
 
       - name: 6. DVC Pull Data
-        # Secrets, sadece bu adımda kullanılacak.
         env:
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
-          echo "Attempting DVC Remote Configuration and Pull (Final Fix)..."
+          echo "Attempting DVC Remote Configuration and Pull (Teşhis)..."
           
-          # 1. Pipeline'ın Azure uzaktan depolama bilgilerini konfigüre et
-          # Bu komutlar, Secrets'ı doğrudan DVC konfigürasyonuna yazar
+          # 1. DVC Konfigürasyonunu Göster
+          echo "--- DVC Konfigürasyonu ---"
+          dvc remote list -v
+          
+          # 2. Pipeline'ın Azure uzaktan depolama bilgilerini konfigüre et (Önceki Adım)
           dvc remote modify azure_remote account_name ${AZURE_STORAGE_ACCOUNT}
           dvc remote modify azure_remote account_key ${AZURE_STORAGE_KEY}
+
+          # 3. Yeniden Konfigürasyonu Göster (Gizli bilgiler hariç)
+          echo "--- Yeniden Konfigürasyon Kontrolü ---"
+          dvc remote list -v
           
-          # 2. Zorla veri indirme (Artık kimlik bilgileri doğru)
+          # 4. Zorla veri indirme (Hala çalışmıyorsa sorun konfigürasyondadır)
           dvc pull -v --force
           
-          echo "Veri Dizin Kontrolü (Başarılı Olmalı):"
+          echo "Veri Dizin Kontrolü:"
           ls -l data/raw/
 
       - name: 7. Run Preprocessing and Train Model
