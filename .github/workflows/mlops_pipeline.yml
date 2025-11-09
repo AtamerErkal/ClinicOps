@@ -103,13 +103,13 @@ jobs:
           
       - name: 4. Build and Push Docker Image
         id: build_push
-        uses: docker/build-and-push-action@v5
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           # Tags the image with the Git SHA hash for versioning
           tags: ${{ secrets.AZURE_CR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
-          
+  
       - name: 5. Deploy to Azure Container Instances (ACI)
         uses: azure/aci-deploy@v1
         with:
