@@ -120,6 +120,8 @@ jobs:
           image: ${{ secrets.AZURE_CR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
           name: clinicops-api-${{ github.sha }} 
           location: GermanyWestCentral
+          # YENİ ZORUNLU PARAMETRE EKLENDİ!
+          dns-name-label: "klinikops-api-${{ github.sha }}" 
           registry-username: ${{ secrets.AZURE_CR_USERNAME }}
           registry-password: ${{ secrets.AZURE_CR_PASSWORD }}
           ip-address: Public
