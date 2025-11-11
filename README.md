@@ -1347,3 +1347,4 @@ For questions or support, please open an issue in this repository.
 
 
 "Final ACI deployment attempt: $(date)" 
+"Final attempt after deleting ACI container: $(date)" 
