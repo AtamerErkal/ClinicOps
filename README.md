@@ -7,11 +7,11 @@
 
 
 
-[!\\\[Pipeline Status](https://github.com/YOUR\\\_USERNAME/YOUR\\\_REPOSITORY/actions/workflows/mlops\\\_pipeline.yml/badge.svg)](https://github.com/YOUR\\\_USERNAME/YOUR\\\_REPOSITORY/actions/workflows/mlops\\\_pipeline.yml)
+\\\[Pipeline Status(https://github.com/YOUR\\\_USERNAME/YOUR\\\_REPOSITORY/actions/workflows/mlops\\\_pipeline.yml/badge.svg)](https://github.com/YOUR\\\_USERNAME/YOUR\\\_REPOSITORY/actions/workflows/mlops\\\_pipeline.yml)
 
 
 
-[!\\\[Python 3.11](https://img.shields.io/badge/Python-3.11-blue?logo=python\\\&logoColor=white)](https://www.python.org/)
+\\\[Python 3.11](https://img.shields.io/badge/Python-3.11-blue?logo=python\\\&logoColor=white)](https://www.python.org/)
 
 
 
