@@ -26,7 +26,6 @@ def train_model(train_path, test_path):
         train_df = pd.read_csv(train_path)
         test_df = pd.read_csv(test_path)
 
-        # HEDEF DEĞİŞKENİ GÜNCELLEDİK!
         target = 'lengthofstay' 
         
         # Define features (X) and target (y)
@@ -58,7 +57,7 @@ def train_model(train_path, test_path):
         # --- MLflow Tracking ---
         mlflow.set_experiment("KlinikOps-Length-of-Stay")
 
-        with mlflow.start_run() as run:
+        with mlflow.start_run(run_name=f"Training Run - {model_name}") as run:
             logging.info("Starting MLflow run...")
             
             # Log parameters
@@ -81,7 +80,11 @@ def train_model(train_path, test_path):
             # --- Log Metrics & Model ---
             mlflow.log_metric("mae", mae)
             mlflow.log_metric("r2", r2)
-            mlflow.sklearn.log_model(model_pipeline, "model")
+            mlflow.sklearn.log_model(
+                sk_pipeline, 
+                "model", 
+                registered_model_name="ClinicOpsModel"
+            )
             
             logging.info(f"Run {run.info.run_id} finished successfully.")
 
@@ -89,6 +92,6 @@ def train_model(train_path, test_path):
         logging.error(f"Error: Processed data files not found at {train_path} or {test_path}")
     except Exception as e:
         logging.error(f"An error occurred during model training: {e}")
-        
+    print(run.info.run_id)    
 if __name__ == "__main__":
     train_model(TRAIN_PATH, TEST_PATH)

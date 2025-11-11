@@ -1,22 +1,25 @@
 # .github/workflows/mlops_pipeline.yml
 
-name: ClinicOps MLOps Pipeline (CI/CD/DVC/ACI)
+name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
 # --- GLOBAL ENVIRONMENT VARIABLES ---
-# Resource Group name used for Azure Container Instances (ACI) deployment
 env:
   RG_NAME: ClinicOps-RG
 
 on:
   push:
-    branches: [ main, develop ]    # Triggers on push to main or develop
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]             # Triggers when a PR is opened to main
+    branches: [ main ]
 
+# --- Define the outputs for inter-job communication ---
+# This is crucial for passing the MLflow Run ID
 jobs:
   # --- 1. FULL CI/ML WORKFLOW (TEST, PULL DATA, TRAIN, LOG) ---
   full-mlops-workflow:
     runs-on: ubuntu-latest
+    outputs:
+      MLFLOW_RUN_ID: ${{ steps.train_model.outputs.MLFLOW_RUN_ID }} # Define the output here
     
     steps:
       - name: 1. Checkout Repository and History
@@ -34,7 +37,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          # Install DVC Azure dependency for data pull
           pip install 'dvc[azure]'
 
       # --- CI STAGE (CODE QUALITY & TESTING) ---
@@ -55,24 +57,25 @@ jobs:
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
           echo "Attempting DVC Remote Configuration and Pull..."
-          
-          # Configure Azure credentials for DVC
           dvc remote modify azure_remote account_name ${AZURE_STORAGE_ACCOUNT}
           dvc remote modify azure_remote account_key ${AZURE_STORAGE_KEY}
-          
-          # Force pull data from Azure DVC remote
           dvc pull -v --force
-          
           echo "Data Directory Check:"
           ls -l data/raw/
 
       - name: 7. Run Preprocessing and Train Model
+        id: train_model  # Define an ID for this step to capture output
         env:
           PYTHONPATH: .
         run: |
           echo "Starting Data Processing and Model Training..."
           python scripts/data_processing.py
-          python scripts/train.py
+          
+          # Execute train.py and capture the Run ID printed to stdout
+          RUN_ID=$(python scripts/train.py) 
+          
+          # Set the Run ID as an output variable for the next job
+          echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
       - name: 8. Archive MLflow Artifacts
         uses: actions/upload-artifact@v4
@@ -82,16 +85,17 @@ jobs:
           
   # --- 2. CONTINUOUS DEPLOYMENT TO AZURE CONTAINER INSTANCES (ACI) ---
   deploy-api-to-aci:
-    # This job only runs if the 'full-mlops-workflow' job is successful
     needs: full-mlops-workflow
     runs-on: ubuntu-latest
     environment: Production 
+    # Use the output from the previous job to set an environment variable here
+    env:
+      MLFLOW_RUN_ID_VAR: ${{ needs.full-mlops-workflow.outputs.MLFLOW_RUN_ID }}
     
     steps:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
 
-      # Azure Login adımı (Önceki hatalardan sonra eklenmişti)
       - name: 2. Azure Login using Service Principal
         uses: azure/login@v1
         with:
@@ -124,7 +128,13 @@ jobs:
           location: GermanyWestCentral
           dns-name-label: "klinikops-api-${{ github.sha }}" 
 
-          environment-variables: AZURE_STORAGE_ACCOUNT=${{ secrets.AZURE_STORAGE_ACCOUNT }},AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }}
+          # Final fix: Inject all dynamic variables into the ACI container using the stable JSON format
+          environment-variables: >
+            [
+              {"name":"AZURE_STORAGE_ACCOUNT", "value":"${{ secrets.AZURE_STORAGE_ACCOUNT }}"}, 
+              {"name":"AZURE_STORAGE_KEY", "value":"${{ secrets.AZURE_STORAGE_KEY }}"}, 
+              {"name":"MLFLOW_RUN_ID", "value":"${{ env.MLFLOW_RUN_ID_VAR }}"}
+            ]
 
           registry-username: ${{ secrets.AZURE_CR_USERNAME }}
           registry-password: ${{ secrets.AZURE_CR_PASSWORD }}

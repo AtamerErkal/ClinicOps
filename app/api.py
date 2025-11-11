@@ -10,11 +10,13 @@ import os
 # --- Setup ---
 logging.basicConfig(level=logging.INFO)
 
-MODEL_URI = "runs:/529a0a72486f47e0a1a0b5595abef114/model" 
+# The RUN_ID will be dynamically set by the GitHub Actions pipeline as an environment variable (MLFLOW_RUN_ID)
+RUN_ID = os.getenv("MLFLOW_RUN_ID")
+MODEL_URI = f"runs:/{RUN_ID}/model" if RUN_ID else None 
 
 # --- FastAPI App and Model Loading ---
 app = FastAPI(
-    title="ClinicOps Prediction Service",
+    title="KlinikOps Prediction Service",
     version="1.0",
     description="Length of Stay Prediction API"
 )
@@ -24,11 +26,16 @@ model = None
 def load_model():
     """
     Loads the MLflow model when the application starts. 
-    Requires AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY environment variables to be set.
+    It requires the MLFLOW_RUN_ID, AZURE_STORAGE_ACCOUNT, and AZURE_STORAGE_KEY
+    environment variables to be set by the ACI deployment step.
     """
     global model
     
-    # Check if necessary credentials are set for MLflow to connect to Azure Storage
+    if not MODEL_URI:
+        logging.error("MLFLOW_RUN_ID environment variable is missing. Cannot proceed with model loading.")
+        return
+        
+    # Crucial check for Azure Storage access
     if not os.getenv("AZURE_STORAGE_ACCOUNT") or not os.getenv("AZURE_STORAGE_KEY"):
         logging.error("Azure Storage credentials are NOT set as environment variables. Model loading will likely fail.")
         return
@@ -41,6 +48,7 @@ def load_model():
         logging.error(f"Error loading model: {e}")
 
 # --- Data Schema (Actual 26-Feature Schema from CSV) ---
+# This ensures 26 features are shown on the Swagger UI.
 
 class PatientData(BaseModel):
     """Schema representing the features expected by the trained model."""
@@ -81,13 +89,9 @@ def predict_length_of_stay(data: PatientData):
         raise HTTPException(status_code=503, detail="Model is not yet loaded. Check logs for MLflow connection errors.")
 
     try:
-        # 1. Convert the incoming Pydantic object to a Pandas DataFrame
         input_df = pd.DataFrame([data.model_dump()])
-
-        # 2. Make the prediction (the model pipeline handles preprocessing)
         prediction = model.predict(input_df)
 
-        # 3. Return the result
         return {
             "predicted_length_of_stay": round(float(prediction[0]), 2),
             "unit": "Days"
