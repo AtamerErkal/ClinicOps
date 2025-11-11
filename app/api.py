@@ -10,7 +10,7 @@ import os
 # --- Setup ---
 logging.basicConfig(level=logging.INFO)
 
-MODEL_URI = "runs:/20de5545fe854ccaa59992efb11be5f8/model" 
+MODEL_URI = "runs:/529a0a72486f47e0a1a0b5595abef114/model" 
 
 # --- FastAPI App and Model Loading ---
 app = FastAPI(
