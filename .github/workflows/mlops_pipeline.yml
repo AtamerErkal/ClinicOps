@@ -12,14 +12,13 @@ on:
   pull_request:
     branches: [ main ]
 
-# --- Define the outputs for inter-job communication ---
-# This is crucial for passing the MLflow Run ID
 jobs:
   # --- 1. FULL CI/ML WORKFLOW (TEST, PULL DATA, TRAIN, LOG) ---
   full-mlops-workflow:
     runs-on: ubuntu-latest
     outputs:
-      MLFLOW_RUN_ID: ${{ steps.train_model.outputs.MLFLOW_RUN_ID }} # Define the output here
+      # Define the output for the next job
+      MLFLOW_RUN_ID: ${{ steps.train_model.outputs.MLFLOW_RUN_ID }} 
     
     steps:
       - name: 1. Checkout Repository and History
@@ -39,7 +38,6 @@ jobs:
           pip install -r requirements.txt
           pip install 'dvc[azure]'
 
-      # --- CI STAGE (CODE QUALITY & TESTING) ---
       - name: 4. Run Pytest
         env:
           PYTHONPATH: .
@@ -50,7 +48,6 @@ jobs:
         run: |
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
-      # --- CD/ML STAGE (DATA PULL & TRAINING) ---
       - name: 6. DVC Pull Data
         env:
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
@@ -63,7 +60,7 @@ jobs:
           echo "Data Directory Check:"
           ls -l data/raw/
 
-      - name: 7. Run Preprocessing and Train Model
+      - name: 7. Run Preprocessing and Train Model (Optimized)
         id: train_model  # Define an ID for this step to capture output
         env:
           PYTHONPATH: .
@@ -71,7 +68,7 @@ jobs:
           echo "Starting Data Processing and Model Training..."
           python scripts/data_processing.py
           
-          # Execute train.py and capture the Run ID printed to stdout
+          # Execute train.py and capture the Run ID (which is the only print output)
           RUN_ID=$(python scripts/train.py) 
           
           # Set the Run ID as an output variable for the next job
@@ -88,8 +85,8 @@ jobs:
     needs: full-mlops-workflow
     runs-on: ubuntu-latest
     environment: Production 
-    # Use the output from the previous job to set an environment variable here
     env:
+      # Get the Run ID from the previous job's output
       MLFLOW_RUN_ID_VAR: ${{ needs.full-mlops-workflow.outputs.MLFLOW_RUN_ID }}
     
     steps:
@@ -128,13 +125,9 @@ jobs:
           location: GermanyWestCentral
           dns-name-label: "klinikops-api-${{ github.sha }}" 
 
-          # Final fix: Inject all dynamic variables into the ACI container using the stable JSON format
-          environment-variables: >
-            [
-              {"name":"AZURE_STORAGE_ACCOUNT", "value":"${{ secrets.AZURE_STORAGE_ACCOUNT }}"}, 
-              {"name":"AZURE_STORAGE_KEY", "value":"${{ secrets.AZURE_STORAGE_KEY }}"}, 
-              {"name":"MLFLOW_RUN_ID", "value":"${{ env.MLFLOW_RUN_ID_VAR }}"}
-            ]
+          # --- FINAL FIX: Use single-line JSON format ---
+          # This is the most robust way to pass environment variables to this action
+          environment-variables: '[{"name":"AZURE_STORAGE_ACCOUNT", "value":"${{ secrets.AZURE_STORAGE_ACCOUNT }}"}, {"name":"AZURE_STORAGE_KEY", "value":"${{ secrets.AZURE_STORAGE_KEY }}"}, {"name":"MLFLOW_RUN_ID", "value":"${{ env.MLFLOW_RUN_ID_VAR }}"}]'
 
           registry-username: ${{ secrets.AZURE_CR_USERNAME }}
           registry-password: ${{ secrets.AZURE_CR_PASSWORD }}
