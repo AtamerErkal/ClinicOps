@@ -17,7 +17,6 @@ jobs:
   full-mlops-workflow:
     runs-on: ubuntu-latest
     outputs:
-      # Define the output for the next job
       MLFLOW_RUN_ID: ${{ steps.train_model.outputs.MLFLOW_RUN_ID }} 
     
     steps:
@@ -68,10 +67,8 @@ jobs:
           echo "Starting Data Processing and Model Training..."
           python scripts/data_processing.py
           
-          # Execute train.py and capture the Run ID (which is the only print output)
           RUN_ID=$(python scripts/train.py) 
           
-          # Set the Run ID as an output variable for the next job
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
       - name: 8. Archive MLflow Artifacts
@@ -86,7 +83,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: Production 
     env:
-      # Get the Run ID from the previous job's output
       MLFLOW_RUN_ID_VAR: ${{ needs.full-mlops-workflow.outputs.MLFLOW_RUN_ID }}
     
     steps:
@@ -125,13 +121,9 @@ jobs:
           location: GermanyWestCentral
           dns-name-label: "klinikops-api-${{ github.sha }}" 
 
-          # --- FINAL FIX: Split variables into standard and secure ---
-          # This is the correct way to pass secrets to this action.
-          environment-variables: |
-            AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-            MLFLOW_RUN_ID: ${{ env.MLFLOW_RUN_ID_VAR }}
-          secure-environment-variables: |
-            AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          # --- SON VE EN BASİT DÜZELTME: Virgülle ayrılmış KEY=VALUE dizisi ---
+          # Bu, Action'ın en basit string parsing formatını kullanır.
+          environment-variables: AZURE_STORAGE_ACCOUNT=${{ secrets.AZURE_STORAGE_ACCOUNT }},AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }},MLFLOW_RUN_ID=${{ env.MLFLOW_RUN_ID_VAR }}
 
           registry-username: ${{ secrets.AZURE_CR_USERNAME }}
           registry-password: ${{ secrets.AZURE_CR_PASSWORD }}
