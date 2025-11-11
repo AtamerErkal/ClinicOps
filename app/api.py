@@ -10,9 +10,20 @@ import os
 # --- Setup ---
 logging.basicConfig(level=logging.INFO)
 
-# The RUN_ID will be dynamically set by the GitHub Actions pipeline as an environment variable (MLFLOW_RUN_ID)
+# The RUN_ID and AZURE_ACCOUNT are dynamically set by the GitHub Actions pipeline
 RUN_ID = os.getenv("MLFLOW_RUN_ID")
-MODEL_URI = f"runs:/{RUN_ID}/model" if RUN_ID else None 
+AZURE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT") # Get the storage account name
+
+# ASSUMPTION: The MLflow artifacts are stored in a container named 'mlflow'
+CONTAINER_NAME = "mlflow" 
+
+# --- CRITICAL FIX: Use the explicit WASBS URI for Azure Blob Storage ---
+# This bypasses the need for a separate MLflow Tracking Server
+MODEL_URI = (
+    f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{RUN_ID}/model"
+    if RUN_ID and AZURE_ACCOUNT
+    else None
+)
 
 # --- FastAPI App and Model Loading ---
 app = FastAPI(
@@ -25,31 +36,30 @@ model = None
 @app.on_event("startup")
 def load_model():
     """
-    Loads the MLflow model when the application starts. 
-    It requires the MLFLOW_RUN_ID, AZURE_STORAGE_ACCOUNT, and AZURE_STORAGE_KEY
-    environment variables to be set by the ACI deployment step.
+    Loads the MLflow model from Azure Blob Storage using the explicit WASBS URI.
+    Requires AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY environment variables.
     """
     global model
     
     if not MODEL_URI:
-        logging.error("MLFLOW_RUN_ID environment variable is missing. Cannot proceed with model loading.")
+        logging.error("MODEL_URI could not be constructed (MLFLOW_RUN_ID or AZURE_STORAGE_ACCOUNT missing).")
         return
         
-    # Crucial check for Azure Storage access
-    if not os.getenv("AZURE_STORAGE_ACCOUNT") or not os.getenv("AZURE_STORAGE_KEY"):
-        logging.error("Azure Storage credentials are NOT set as environment variables. Model loading will likely fail.")
+    # Crucial check for Azure Storage access (Key must be present)
+    if not os.getenv("AZURE_STORAGE_KEY"):
+        logging.error("AZURE_STORAGE_KEY environment variable is missing. Authentication will fail.")
         return
 
     try:
         logging.info(f"Loading model from MLflow URI: {MODEL_URI}")
+        # MLflow automatically uses AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY 
+        # environment variables for authentication with WASBS protocol.
         model = mlflow.sklearn.load_model(MODEL_URI)
         logging.info("Model successfully loaded.")
     except Exception as e:
-        logging.error(f"Error loading model: {e}")
+        logging.error(f"Error loading model from Azure: {e}")
 
 # --- Data Schema (Actual 26-Feature Schema from CSV) ---
-# This ensures 26 features are shown on the Swagger UI.
-
 class PatientData(BaseModel):
     """Schema representing the features expected by the trained model."""
     rcount: int
