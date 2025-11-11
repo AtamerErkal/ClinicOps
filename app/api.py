@@ -15,7 +15,7 @@ RUN_ID = os.getenv("MLFLOW_RUN_ID")
 AZURE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT") # Get the storage account name
 
 # ASSUMPTION: The MLflow artifacts are stored in a container named 'mlflow'
-CONTAINER_NAME = "mlflow" 
+CONTAINER_NAME = "clinicops-dvc" 
 
 # --- CRITICAL FIX: Use the explicit WASBS URI for Azure Blob Storage ---
 # This bypasses the need for a separate MLflow Tracking Server
