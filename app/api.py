@@ -8,12 +8,14 @@ import logging
 
 # --- Setup ---
 logging.basicConfig(level=logging.INFO)
-# TODO: Update the {run_id} below with your latest successful MLflow run ID
-MODEL_URI = "runs:/{run_id}/model" 
+
+# TODO: Please update the {run_id} below with your latest successful MLflow run ID
+# (e.g., 08d4114c23bf411587f47ab1b6fe0ff6)
+MODEL_URI = "runs:/09833a3aaa5848eda02f9cf2a75fd3ec/model" 
 
 # --- FastAPI App and Model Loading ---
 app = FastAPI(
-    title="KlinikOps Prediction Service",
+    title="ClinicOps Prediction Service",
     version="1.0",
     description="Length of Stay Prediction API"
 )
@@ -24,30 +26,45 @@ def load_model():
     """Loads the MLflow model when the application starts."""
     global model
     try:
-        # Example: runs:/08d4114c23bf411587f47ab1b6fe0ff6/model
-        logging.info(f"MLflow URI: {MODEL_URI}")
+        # You must enter your MLflow Run ID here
+        logging.info(f"Loading model from MLflow URI: {MODEL_URI}")
         model = mlflow.sklearn.load_model(MODEL_URI)
         logging.info("Model successfully loaded.")
     except Exception as e:
         logging.error(f"Error loading model: {e}")
-        # In a real environment, you might stop the service if the model fails to load.
+        # It might be safer to stop the API if the model fails to load.
 
-# --- Data Schema (Structure of incoming prediction data) ---
+# --- Data Schema (Your actual CSV Schema) ---
 
-# CRITICAL: This schema MUST reflect ALL 25 features/columns used in your model training.
+# This schema reflects the 26 feature columns from Patient_Stay_Data.csv.
 class PatientData(BaseModel):
-    # Example: Gender (Categorical)
-    gender: str 
-    # Example: Age (Numerical)
+    rcount: int
+    gender: str
+    dialysis: str
+    mcd: str
+    ecodes: str
+    hmo: str
+    health: str
     age: int
-    # Example: Insurance Type (Categorical)
-    insurance: str
-    # Example: Bed Type (Categorical)
-    bed_type: str
-    # TODO: ADD THE OTHER 21 COLUMNS FROM YOUR TRAINING DATA HERE!
-    # ...
-    # ... 
-
+    eclaim: float
+    pridx: int
+    sdimd: int
+    procedure: str
+    pcode: str
+    zid: str
+    plos: float
+    clmds: int
+    disch: str
+    orproc: str
+    comorb: str
+    diag: str
+    ipros: str
+    DRG: str
+    last: str
+    PG: str
+    payer: str
+    primaryphy: str
+    
 # --- API Endpoint ---
 
 @app.post("/predict", tags=["Prediction"])
