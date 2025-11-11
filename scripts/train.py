@@ -1,97 +1,96 @@
 import pandas as pd
+import numpy as np
+import os
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+
 import mlflow
 import mlflow.sklearn
-import os
-import logging
 
-# Setup basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Set MLflow tracking URI (Placeholder: Replace with your actual tracking setup if necessary)
+# For Azure Blob Storage (if configured via DVC), this step might be optional but is good practice.
+# os.environ["MLFLOW_TRACKING_URI"] = "azureml://azdops.azureml.net/mlflows/v1.0" 
 
-# Define paths
-TRAIN_PATH = os.path.join('data', 'processed', 'train.csv')
-TEST_PATH = os.path.join('data', 'processed', 'test.csv')
-
-def train_model(train_path, test_path):
-    """
-    Loads processed data, trains a model, and logs
-    everything with MLflow.
-    """
+def train_model():
+    # --- Load Data ---
     try:
-        logging.info("Loading processed data...")
-        train_df = pd.read_csv(train_path)
-        test_df = pd.read_csv(test_path)
+        # Assuming data_processing.py saves the final processed data here
+        df = pd.read_csv('data/processed/train.csv')
+    except FileNotFoundError:
+        print("Error: Processed training data not found. Run data_processing.py first.")
+        # We raise an error instead of returning, to fail the GitHub action job
+        raise
 
-        target = 'lengthofstay' 
-        
-        # Define features (X) and target (y)
-        X_train = train_df.drop(target, axis=1)
-        y_train = train_df[target]
-        X_test = test_df.drop(target, axis=1)
-        y_test = test_df[target]
+    # Define features (X) and target (y)
+    # Target is lengthofstay, which must be dropped from features.
+    X = df.drop('lengthofstay', axis=1, errors='ignore')
+    y = df['lengthofstay']
 
-        # Identify categorical features for encoding
-        # This list must be updated based on the actual categorical columns in the data
-        categorical_features = X_train.select_dtypes(include=['object', 'category']).columns
+    # --- Feature Engineering & Preprocessing ---
+    # Determine features based on data types in the processed data
+    numerical_features = X.select_dtypes(include=np.number).columns.tolist()
+    categorical_features = X.select_dtypes(include=['object']).columns.tolist()
 
-        # --- Create a Scikit-learn Pipeline ---
-        
-        # Create a preprocessor (OneHotEncoder for categorical features)
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
-            ],
-            remainder='passthrough' # Keep numerical columns as-is
-        )
+    # Create preprocessor
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', StandardScaler(), numerical_features),
+            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+        ],
+        # Drop columns not used (like eid, vdate, facid if they weren't dropped earlier)
+        remainder='drop' 
+    )
 
-        # Create the full model pipeline
-        model_pipeline = Pipeline(steps=[
-            ('preprocessor', preprocessor),
-            ('regressor', RandomForestRegressor(n_estimators=50, random_state=42, n_jobs=-1))
-        ])
+    # --- Model Definition ---
+    regressor = RandomForestRegressor(n_estimators=100, random_state=42)
+    
+    # Create the full modeling pipeline (Fixes F821 undefined name 'sk_pipeline')
+    sk_pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('regressor', regressor)
+    ])
+    
+    # Define model name (Fixes F821 undefined name 'model_name')
+    model_name = "ClinicOpsLengthOfStayModel"
 
-        # --- MLflow Tracking ---
-        mlflow.set_experiment("KlinikOps-Length-of-Stay")
-
+    # --- MLflow Tracking & Training ---
+    try:
+        # Start MLflow run (Fixes F821 undefined name 'model_name')
         with mlflow.start_run(run_name=f"Training Run - {model_name}") as run:
-            logging.info("Starting MLflow run...")
             
-            # Log parameters
+            # Train the model
+            sk_pipeline.fit(X, y)
+
+            # Make predictions and calculate metrics
+            y_pred = sk_pipeline.predict(X)
+            r2 = r2_score(y, y_pred)
+            rmse = mean_squared_error(y, y_pred, squared=False)
+
+            # Log parameters and metrics
             mlflow.log_param("model_type", "RandomForestRegressor")
-            mlflow.log_param("n_estimators", 50)
-
-            # --- Train the Model ---
-            logging.info("Training the model...")
-            model_pipeline.fit(X_train, y_train)
-
-            # --- Evaluate the Model ---
-            logging.info("Evaluating the model...")
-            y_pred = model_pipeline.predict(X_test)
+            mlflow.log_metric("r2_score", r2)
+            mlflow.log_metric("rmse", rmse)
+            print(f"R2 Score: {r2}")
             
-            mae = mean_absolute_error(y_test, y_pred)
-            r2 = r2_score(y_test, y_pred)
-
-            logging.info(f"Evaluation Metrics: MAE={mae:.4f}, R2={r2:.4f}")
-
-            # --- Log Metrics & Model ---
-            mlflow.log_metric("mae", mae)
-            mlflow.log_metric("r2", r2)
+            # Log the model (Fixes F821 undefined name 'sk_pipeline')
             mlflow.sklearn.log_model(
                 sk_pipeline, 
                 "model", 
-                registered_model_name="ClinicOpsModel"
+                registered_model_name=model_name
             )
             
-            logging.info(f"Run {run.info.run_id} finished successfully.")
+            # --- CRITICAL FIX: Print the Run ID for the CI/CD pipeline to capture ---
+            # This is the last thing printed to stdout and is captured by GitHub Actions
+            print(run.info.run_id) 
 
-    except FileNotFoundError:
-        logging.error(f"Error: Processed data files not found at {train_path} or {test_path}")
     except Exception as e:
-        logging.error(f"An error occurred during model training: {e}")
-    print(run.info.run_id)    
+        print(f"An error occurred during training or MLflow logging: {e}")
+        # Raise the exception to ensure the GitHub Action job fails on error
+        raise 
+
 if __name__ == "__main__":
-    train_model(TRAIN_PATH, TEST_PATH)
+    train_model()
