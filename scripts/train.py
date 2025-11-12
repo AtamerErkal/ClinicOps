@@ -1,9 +1,9 @@
-# scripts/train.py
+# scripts/train.py - FINAL CORRECTED FEATURE LIST & REGRESSION SETUP
 
 import mlflow
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LinearRegression 
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
@@ -14,14 +14,39 @@ import numpy as np
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# Column definitions (Assuming these are correct based on your previous work)
-NUMERIC_FEATURES = ['rcount', 'age', 'eclaim', 'pridx', 'sdimd', 'plos', 'clmds']
-CATEGORICAL_FEATURES = ['gender', 'dialysis', 'mcd', 'ecodes', 'hmo', 'health', 
-                        'procedure', 'pcode', 'zid', 'disch', 'orproc', 'comorb', 
-                        'diag', 'ipros', 'DRG', 'last', 'PG', 'payer', 'primaryphy']
-TARGET_COLUMN = 'lengthofstay'
+# --- CRITICAL FIX: FEATURE LISTS UPDATED TO MATCH RAW DATA ---
+NUMERIC_FEATURES = [
+    'rcount', 
+    'hematocrit', 
+    'neutrophils', 
+    'sodium', 
+    'glucose', 
+    'bloodureanitro', 
+    'creatinine', 
+    'bmi', 
+    'pulse', 
+    'respiration'
+]
+CATEGORICAL_FEATURES = [
+    'gender', 
+    'dialysisrenalendstage', 
+    'asthma', 
+    'irondef', 
+    'pneum', 
+    'substancedependence', 
+    'psychologicaldisordermajor', 
+    'depress', 
+    'psychother', 
+    'fibrosisandother', 
+    'malnutrition', 
+    'hemo', 
+    'secondarydiagnosisnonicd9', 
+    'discharged', 
+    'facid'
+]
+TARGET_COLUMN = 'lengthofstay' 
+# ----------------------------------------------------------------------
 
-# --- CRITICAL FIX: Changed file_path to 'data/processed/train.csv' ---
 def load_data(file_path='data/processed/train.csv'):
     """
     Loads the processed training data (train.csv) created by data_processing.py.
@@ -30,9 +55,7 @@ def load_data(file_path='data/processed/train.csv'):
         df = pd.read_csv(file_path)
         return df
     except Exception as e:
-        # Improved error message to reflect the exact file not found
-        log.error(f"Error loading train data: [Errno 2] No such file or directory: '{file_path}'. "
-                  f"Ensure data_processing.py created the train.csv file.")
+        log.error(f"Error loading train data: [Errno 2] No such file or directory: '{file_path}'. ")
         return None
 
 def train_model():
@@ -40,9 +63,20 @@ def train_model():
     if df is None:
         return
 
-    # Assuming 'long_stay' column has been created (0 or 1)
+    # --- Schema Validation Check (New features lists resolve the previous KeyError) ---
+    all_expected_features = set(NUMERIC_FEATURES + CATEGORICAL_FEATURES)
+    loaded_features = set(df.drop(columns=[TARGET_COLUMN], errors='ignore').columns.tolist())
+    
+    missing_cols = list(all_expected_features - loaded_features)
+    
+    if missing_cols:
+        log.error(f"FATAL: Feature set mismatch. Missing features in processed data: {missing_cols}")
+        log.error(f"Loaded columns: {df.columns.tolist()}")
+        raise ValueError(f"Feature set mismatch. Missing features: {missing_cols}")
+    # --- END Schema Validation Code ---
+    
     X = df.drop(columns=[TARGET_COLUMN])
-    y = df[TARGET_COLUMN]
+    y = df[TARGET_COLUMN] # Regression target
 
     # Preprocessing pipelines
     numeric_transformer = Pipeline(steps=[
@@ -50,7 +84,8 @@ def train_model():
     ])
 
     categorical_transformer = Pipeline(steps=[
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+        # handle_unknown='ignore' prevents crashing on unseen categories in the test set
+        ('onehot', OneHotEncoder(handle_unknown='ignore')) 
     ])
 
     preprocessor = ColumnTransformer(
@@ -62,8 +97,9 @@ def train_model():
     )
 
     # Full pipeline: Preprocessor + Model
+    # Using LinearRegression for the regression problem
     sk_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
-                                  ('classifier', LogisticRegression(solver='liblinear'))])
+                                  ('regressor', LinearRegression())]) 
 
     model_name = "ClinicOpsLengthOfStayModel"
 
@@ -73,7 +109,7 @@ def train_model():
             sk_pipeline.fit(X, y)
             log.info("Model training complete.")
 
-            # Log model, params, and metrics (metrics logging omitted for brevity)
+            # Log model, params, and metrics 
             mlflow.sklearn.log_model(
                 sk_pipeline, 
                 "model", 
@@ -81,14 +117,10 @@ def train_model():
             )
             
             # --- Pseudo Registry Logic ---
-            # 1. Get the current Run ID
             run_id = run.info.run_id
-            
-            # 2. Write the Run ID to a local file
             with open("latest_run_id.txt", "w") as f:
                 f.write(run_id)
             
-            # CRITICAL: Print the Run ID to the console for the GitHub Action to capture
             print(run_id) 
 
     except Exception as e:
