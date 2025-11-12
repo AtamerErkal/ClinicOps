@@ -67,11 +67,31 @@ jobs:
           echo "Starting Data Processing and Model Training..."
           python scripts/data_processing.py
           
+          # Captures the RUN_ID printed by scripts/train.py, and writes latest_run_id.txt
           RUN_ID=$(python scripts/train.py) 
           
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
-      - name: 8. Archive MLflow Artifacts
+      # --- NEW STEP: Upload latest_run_id.txt to Blob Storage ---
+      - name: 8. Upload latest_run_id.txt to Blob Storage (Pseudo Registry Pointer)
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        run: |
+          echo "Uploading latest_run_id.txt to mlflow container..."
+          
+          # Use Azure CLI to upload the pointer file
+          az storage blob upload \
+            --container-name mlflow \
+            --account-name ${{ secrets.AZURE_STORAGE_ACCOUNT }} \
+            --file latest_run_id.txt \
+            --name latest_model_run.txt \
+            --auth-mode key \
+            --overwrite
+            
+          echo "latest_model_run.txt uploaded successfully."
+
+      - name: 9. Archive MLflow Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mlflow-run-artifacts
@@ -83,7 +103,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: Production 
     env:
-      MLFLOW_RUN_ID_VAR: ${{ needs.full-mlops-workflow.outputs.MLFLOW_RUN_ID }}
       ACR_LOGIN_SERVER: ${{ secrets.AZURE_CR_LOGIN_SERVER }}
     
     steps:
@@ -114,11 +133,11 @@ jobs:
           tags: ${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
           
       # --- CRITICAL FIX: Direct Deployment via Azure CLI ---
-      # This bypasses the problematic 'aci-deploy@v1' Action and ensures 
-      # environment variables are passed correctly to the container.
+      # This ensures AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY are passed directly.
+      # MLFLOW_RUN_ID is NOT passed as an environment variable anymore.
       - name: 6. Deploy to Azure Container Instances (ACI) via Azure CLI
         run: |
-          # 1. API NAME
+          # 1. ACI NAME
           ACI_NAME="clinicops-api-${{ github.sha }}"
           
           # 2. IMAGE NAME
@@ -130,7 +149,7 @@ jobs:
           
           echo "Deploying ACI using Azure CLI..."
           
-          # AZURE CLI COMMAND: Variables are safely enclosed in quotes.
+          # AZURE CLI COMMAND: Only need storage credentials
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name $ACI_NAME \
@@ -148,7 +167,6 @@ jobs:
             --restart-policy Always \
             --environment-variables \
               AZURE_STORAGE_ACCOUNT="${{ secrets.AZURE_STORAGE_ACCOUNT }}" \
-              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
-              MLFLOW_RUN_ID="${{ env.MLFLOW_RUN_ID_VAR }}"
+              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}"
               
           echo "ACI Deployment with CLI initiated."

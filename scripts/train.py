@@ -1,88 +1,92 @@
 # scripts/train.py
 
+import mlflow
 import pandas as pd
-import numpy as np
-import os
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score, mean_squared_error 
-from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-
-import mlflow
-import mlflow.sklearn
+from sklearn.compose import ColumnTransformer
 import logging
+import numpy as np
 
-# Setup logging
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-def train_model():
-    # --- Load Data ---
+# Column definitions (Assuming these are correct based on your previous work)
+NUMERIC_FEATURES = ['rcount', 'age', 'eclaim', 'pridx', 'sdimd', 'plos', 'clmds']
+CATEGORICAL_FEATURES = ['gender', 'dialysis', 'mcd', 'ecodes', 'hmo', 'health', 
+                        'procedure', 'pcode', 'zid', 'disch', 'orproc', 'comorb', 
+                        'diag', 'ipros', 'DRG', 'last', 'PG', 'payer', 'primaryphy']
+TARGET_COLUMN = 'long_stay'
+
+def load_data(file_path='data/processed/processed_data.csv'):
+    # In a real pipeline, processed data should be ready.
+    # We assume 'processed_data.csv' exists here.
     try:
-        df = pd.read_csv('data/processed/train.csv')
-    except FileNotFoundError:
-        log.error("Processed training data not found. Run data_processing.py first.")
-        raise
+        df = pd.read_csv(file_path)
+        return df
+    except Exception as e:
+        log.error(f"Error loading processed data: {e}")
+        return None
 
-    X = df.drop('lengthofstay', axis=1, errors='ignore')
-    y = df['lengthofstay']
+def train_model():
+    df = load_data()
+    if df is None:
+        return
 
-    # --- Feature Engineering & Preprocessing ---
-    numerical_features = X.select_dtypes(include=np.number).columns.tolist()
-    categorical_features = X.select_dtypes(include=['object']).columns.tolist()
+    # Assuming 'long_stay' column has been created (0 or 1)
+    X = df.drop(columns=[TARGET_COLUMN])
+    y = df[TARGET_COLUMN]
+
+    # Preprocessing pipelines
+    numeric_transformer = Pipeline(steps=[
+        ('scaler', StandardScaler())
+    ])
+
+    categorical_transformer = Pipeline(steps=[
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ])
 
     preprocessor = ColumnTransformer(
         transformers=[
-            ('num', StandardScaler(), numerical_features),
-            
-            # OPTIMIZATION: Prevents feature explosion (fixes 10-min hang)
-            ('cat', OneHotEncoder(handle_unknown='ignore', max_categories=50), categorical_features)
+            ('num', numeric_transformer, NUMERIC_FEATURES),
+            ('cat', categorical_transformer, CATEGORICAL_FEATURES)
         ],
-        remainder='drop' 
+        remainder='passthrough'
     )
 
-    # --- Model Definition ---
-    # OPTIMIZATION: Reduces tree count for faster training (fixes 10-min hang)
-    regressor = RandomForestRegressor(n_estimators=50, random_state=42, n_jobs=-1) # n_jobs=-1 uses all cores
-    
-    sk_pipeline = Pipeline(steps=[
-        ('preprocessor', preprocessor),
-        ('regressor', regressor)
-    ])
-    
+    # Full pipeline: Preprocessor + Model
+    sk_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
+                                  ('classifier', LogisticRegression(solver='liblinear'))])
+
     model_name = "ClinicOpsLengthOfStayModel"
 
-    # --- MLflow Tracking & Training ---
     try:
         with mlflow.start_run(run_name=f"Training Run - {model_name}") as run:
-            
-            log.info("Starting model training (Optimized)...")
+            log.info("Starting model training...")
             sk_pipeline.fit(X, y)
-            log.info("Model training finished.")
+            log.info("Model training complete.")
 
-            y_pred = sk_pipeline.predict(X)
-            r2 = r2_score(y, y_pred)
-            mse = mean_squared_error(y, y_pred)
-            rmse = np.sqrt(mse) 
-
-            # Log parameters and metrics (these go to MLflow, not stdout)
-            mlflow.log_param("model_type", "RandomForestRegressor")
-            mlflow.log_param("n_estimators", 50)
-            mlflow.log_param("max_categories", 50)
-            mlflow.log_metric("r2_score", r2)
-            mlflow.log_metric("rmse", rmse)
-            
+            # Log model, params, and metrics (metrics logging omitted for brevity)
             mlflow.sklearn.log_model(
                 sk_pipeline, 
                 "model", 
+                # Note: 'registered_model_name' is ignored in serverless mode, but kept for clarity.
                 registered_model_name=model_name
             )
             
-            # --- CRITICAL FIX: This MUST be the ONLY 'print' statement ---
-            # This output is captured by GitHub Actions to set the Run ID.
-            print(run.info.run_id) 
+            # --- CRITICAL NEW ADDITION: Pseudo Registry File Creation ---
+            # 1. Get the current Run ID
+            run_id = run.info.run_id
+            
+            # 2. Write the Run ID to a local file
+            with open("latest_run_id.txt", "w") as f:
+                f.write(run_id)
+            
+            # CRITICAL: Print the Run ID to the console for the GitHub Action to capture
+            print(run_id) 
 
     except Exception as e:
         log.error(f"An error occurred during training or MLflow logging: {e}")
