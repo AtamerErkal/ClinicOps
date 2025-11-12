@@ -86,7 +86,7 @@ def load_model():
         return
 
     # MLflow URI: will now use the AZURE_STORAGE_CONNECTION_STRING env var to authenticate
-    MODEL_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/model"
+    MODEL_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/artifacts/model"
     
     try:
         logging.info(f"Loading model from MLflow URI: {MODEL_URI}")
