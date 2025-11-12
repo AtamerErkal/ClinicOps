@@ -1,4 +1,4 @@
-# scripts/train.py - FINAL CORRECTED FEATURE LIST & REGRESSION SETUP
+# scripts/train.py - FINAL REGRESSION SETUP
 
 import mlflow
 import pandas as pd
@@ -14,7 +14,7 @@ import numpy as np
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# --- CRITICAL FIX: FEATURE LISTS UPDATED TO MATCH RAW DATA ---
+# --- CRITICAL FIX: FEATURE LISTS MATCHING RAW DATA ---
 NUMERIC_FEATURES = [
     'rcount', 
     'hematocrit', 
@@ -42,10 +42,10 @@ CATEGORICAL_FEATURES = [
     'hemo', 
     'secondarydiagnosisnonicd9', 
     'discharged', 
-    'facid'
+    'facid' # <--- This is where it's expected
 ]
 TARGET_COLUMN = 'lengthofstay' 
-# ----------------------------------------------------------------------
+# ---------------------------------------------------
 
 def load_data(file_path='data/processed/train.csv'):
     """
@@ -63,7 +63,7 @@ def train_model():
     if df is None:
         return
 
-    # --- Schema Validation Check (New features lists resolve the previous KeyError) ---
+    # --- Schema Validation Check ---
     all_expected_features = set(NUMERIC_FEATURES + CATEGORICAL_FEATURES)
     loaded_features = set(df.drop(columns=[TARGET_COLUMN], errors='ignore').columns.tolist())
     
@@ -84,7 +84,6 @@ def train_model():
     ])
 
     categorical_transformer = Pipeline(steps=[
-        # handle_unknown='ignore' prevents crashing on unseen categories in the test set
         ('onehot', OneHotEncoder(handle_unknown='ignore')) 
     ])
 
@@ -97,7 +96,6 @@ def train_model():
     )
 
     # Full pipeline: Preprocessor + Model
-    # Using LinearRegression for the regression problem
     sk_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
                                   ('regressor', LinearRegression())]) 
 
