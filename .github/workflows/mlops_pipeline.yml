@@ -84,6 +84,7 @@ jobs:
     environment: Production 
     env:
       MLFLOW_RUN_ID_VAR: ${{ needs.full-mlops-workflow.outputs.MLFLOW_RUN_ID }}
+      ACR_LOGIN_SERVER: ${{ secrets.AZURE_CR_LOGIN_SERVER }}
     
     steps:
       - name: 1. Checkout Repository
@@ -100,7 +101,7 @@ jobs:
       - name: 4. Log in to Azure Container Registry (ACR)
         uses: docker/login-action@v3
         with:
-          registry: ${{ secrets.AZURE_CR_LOGIN_SERVER }}
+          registry: ${{ env.ACR_LOGIN_SERVER }}
           username: ${{ secrets.AZURE_CR_USERNAME }}
           password: ${{ secrets.AZURE_CR_PASSWORD }}
           
@@ -110,20 +111,44 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.AZURE_CR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
+          tags: ${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
           
-      - name: 6. Deploy to Azure Container Instances (ACI)
-        uses: azure/aci-deploy@v1
-        with:
-          resource-group: ${{ env.RG_NAME }} 
-          image: ${{ secrets.AZURE_CR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
-          name: clinicops-api-${{ github.sha }} 
-          location: GermanyWestCentral
-          dns-name-label: "klinikops-api-${{ github.sha }}" 
-          environment-variables: 'AZURE_STORAGE_ACCOUNT=${{ secrets.AZURE_STORAGE_ACCOUNT }},AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }},MLFLOW_RUN_ID=${{ env.MLFLOW_RUN_ID_VAR }}'
-          registry-username: ${{ secrets.AZURE_CR_USERNAME }}
-          registry-password: ${{ secrets.AZURE_CR_PASSWORD }}
-          ip-address: Public
-          ports: 80
-          cpu: 1.0
-          memory: 1.5
+      # --- CRITICAL FIX: Direct Deployment via Azure CLI ---
+      # This bypasses the problematic 'aci-deploy@v1' Action and ensures 
+      # environment variables are passed correctly to the container.
+      - name: 6. Deploy to Azure Container Instances (ACI) via Azure CLI
+        run: |
+          # 1. API NAME
+          ACI_NAME="clinicops-api-${{ github.sha }}"
+          
+          # 2. IMAGE NAME
+          IMAGE_NAME="${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}"
+          
+          # 3. SECRETS (Passed via environment variables for security)
+          ACR_USERNAME="${{ secrets.AZURE_CR_USERNAME }}"
+          ACR_PASSWORD="${{ secrets.AZURE_CR_PASSWORD }}"
+          
+          echo "Deploying ACI using Azure CLI..."
+          
+          # AZURE CLI COMMAND: Variables are safely enclosed in quotes.
+          az container create \
+            --resource-group ${{ env.RG_NAME }} \
+            --name $ACI_NAME \
+            --image $IMAGE_NAME \
+            --location GermanyWestCentral \
+            --dns-name-label $ACI_NAME \
+            --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-username $ACR_USERNAME \
+            --registry-password $ACR_PASSWORD \
+            --ports 80 \
+            --cpu 1 \
+            --memory 1.5 \
+            --protocol TCP \
+            --os-type Linux \
+            --restart-policy Always \
+            --environment-variables \
+              AZURE_STORAGE_ACCOUNT="${{ secrets.AZURE_STORAGE_ACCOUNT }}" \
+              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
+              MLFLOW_RUN_ID="${{ env.MLFLOW_RUN_ID_VAR }}"
+              
+          echo "ACI Deployment with CLI initiated."
