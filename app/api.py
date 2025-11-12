@@ -14,7 +14,6 @@ logging.basicConfig(level=logging.INFO)
 RUN_ID = os.getenv("MLFLOW_RUN_ID")
 AZURE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT") # Get the storage account name
 
-# ASSUMPTION: The MLflow artifacts are stored in a container named 'mlflow'
 CONTAINER_NAME = "clinicops-dvc" 
 
 # --- CRITICAL FIX: Use the explicit WASBS URI for Azure Blob Storage ---
@@ -27,7 +26,7 @@ MODEL_URI = (
 
 # --- FastAPI App and Model Loading ---
 app = FastAPI(
-    title="KlinikOps Prediction Service",
+    title="ClinicOps Prediction Service",
     version="1.0",
     description="Length of Stay Prediction API"
 )
