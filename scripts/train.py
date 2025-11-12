@@ -1,4 +1,4 @@
-# scripts/train.py - FINAL FIX for 'rcount'
+# scripts/train.py - FINAL FIX for 'rcount' and SyntaxError
 
 import mlflow
 import pandas as pd
@@ -14,7 +14,7 @@ import numpy as np
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# --- CRITICAL FIX: 'rcount' moved from NUMERIC to CATEGORICAL ---
+# --- FEATURE LISTS ---
 NUMERIC_FEATURES = [
     # 'rcount' was removed from this list
     'hematocrit', 
@@ -28,7 +28,7 @@ NUMERIC_FEATURES = [
     'respiration'
 ]
 CATEGORICAL_FEATURES = [
-    'rcount', # <--- 'rcount' is now correctly treated as categorical
+    'rcount', # 'rcount' is now correctly treated as categorical
     'gender', 
     'dialysisrenalendstage', 
     'asthma', 
@@ -104,7 +104,8 @@ def train_model():
     model_name = "ClinicOpsLengthOfStayModel"
 
     try:
-        with mlflow.start_run(run_namef"Training Run - {model_name}") as run:
+        # --- SYNTAX ERROR FIX: Added '=' after run_name ---
+        with mlflow.start_run(run_name=f"Training Run - {model_name}") as run:
             log.info("Starting model training...")
             sk_pipeline.fit(X, y)
             log.info("Model training complete.")
