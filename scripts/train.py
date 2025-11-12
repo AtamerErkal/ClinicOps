@@ -19,7 +19,7 @@ NUMERIC_FEATURES = ['rcount', 'age', 'eclaim', 'pridx', 'sdimd', 'plos', 'clmds'
 CATEGORICAL_FEATURES = ['gender', 'dialysis', 'mcd', 'ecodes', 'hmo', 'health', 
                         'procedure', 'pcode', 'zid', 'disch', 'orproc', 'comorb', 
                         'diag', 'ipros', 'DRG', 'last', 'PG', 'payer', 'primaryphy']
-TARGET_COLUMN = 'long_stay'
+TARGET_COLUMN = 'lengthofstay'
 
 # --- CRITICAL FIX: Changed file_path to 'data/processed/train.csv' ---
 def load_data(file_path='data/processed/train.csv'):
