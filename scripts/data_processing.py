@@ -1,3 +1,5 @@
+# scripts/data_processing.py - FACID FIX
+
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import os
@@ -23,8 +25,9 @@ def process_data(raw_path, train_path, test_path, test_size=0.2):
 
         # --- Data Cleaning & Feature Engineering ---
         
-        # 1. Drop unnecessary ID and date columns (based on actual data analysis)
-        columns_to_drop = ['eid', 'vdate', 'facid']
+        # 1. Drop unnecessary ID and date columns (facid is kept as a feature)
+        # CRITICAL FIX: 'facid' is REMOVED from the drop list
+        columns_to_drop = ['eid', 'vdate']
         df = df.drop(columns_to_drop, axis=1, errors='ignore')
         
         # 2. Check for the target variable (lengthofstay)
@@ -36,7 +39,6 @@ def process_data(raw_path, train_path, test_path, test_size=0.2):
         # --- Split the Data ---
         logging.info(f"Splitting data... Target: {target}, Test size: {test_size}")
         
-        # Stratify by a relevant categorical column if needed, but simple split is fine for now
         train_df, test_df = train_test_split(df, test_size=test_size, random_state=42)
 
         # --- Save the Data ---
@@ -50,7 +52,6 @@ def process_data(raw_path, train_path, test_path, test_size=0.2):
         logging.info(f"Test data shape: {test_df.shape}")
 
     except FileNotFoundError:
-        # Hata yakalama mesajı güncellendi
         logging.error(f"Error: Raw data file not found at {raw_path}. Did 'dvc pull' run successfully?")
     except Exception as e:
         logging.error(f"An error occurred during data processing: {e}")
