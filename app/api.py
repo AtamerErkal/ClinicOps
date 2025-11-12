@@ -3,28 +3,25 @@
 import mlflow
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-# --- CRITICAL IMPORT: Needed to read files from Azure Blob ---
 from azure.storage.blob import BlobClient 
 import logging
 import os
 from pydantic import BaseModel
-import numpy as np # Ensure numpy is imported if used in prediction
+import numpy as np 
 
 # --- Setup ---
 logging.basicConfig(level=logging.INFO)
 
-# AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY are now CRITICAL
 AZURE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT") 
 AZURE_KEY = os.getenv("AZURE_STORAGE_KEY") 
 
-# ASSUMPTION: The MLflow artifacts are stored in a container named 'mlflow'
-CONTAINER_NAME = "mlflow" 
+# --- CRITICAL FIX: Using the correct container name 'clinicops-dvc' ---
+CONTAINER_NAME = "clinicops-dvc" 
+# -------------------------------------------------------------------
 
-# Model URI (initialized to None)
 MODEL_URI = None
 model = None
 
-# --- CRITICAL NEW FUNCTION: Retrieves RUN_ID from Azure Blob ---
 def get_latest_run_id():
     """
     Downloads the latest_model_run.txt file from Azure Blob Storage to get the RUN_ID.
@@ -34,7 +31,6 @@ def get_latest_run_id():
         return None
 
     try:
-        # Construct the URL and BlobClient
         blob_url = f"https://{AZURE_ACCOUNT}.blob.core.windows.net"
         
         blob_client = BlobClient(
@@ -46,9 +42,7 @@ def get_latest_run_id():
 
         logging.info(f"Attempting to download RUN_ID from {blob_client.url}")
         
-        # Download and read the file content
         downloaded_blob = blob_client.download_blob()
-        # Read the content, decode from bytes to string, and remove leading/trailing whitespace
         run_id = downloaded_blob.readall().decode("utf-8").strip()
         
         logging.info(f"Successfully retrieved RUN_ID: {run_id}")
@@ -73,58 +67,53 @@ def load_model():
     """
     global model, MODEL_URI
     
-    # 1. Get RUN ID from pseudo-registry file
     run_id = get_latest_run_id()
     if not run_id:
         logging.error("Cannot proceed without a valid RUN_ID from pointer file.")
         return
 
-    # 2. Construct the Model URI
     MODEL_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/model"
     
-    # 3. Load the model
     try:
         logging.info(f"Loading model from MLflow URI: {MODEL_URI}")
-        
-        # MLflow automatically uses AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY 
-        # environment variables for authentication with WASBS protocol.
         model = mlflow.sklearn.load_model(MODEL_URI)
         logging.info("Model successfully loaded.")
         
     except Exception as e:
         logging.error(f"CRITICAL: Error loading model from Azure using URI {MODEL_URI}. Error: {e}")
 
-# --- Data Schema (Ensure this matches your expected 26 features) ---
+# --- Data Schema (Must match the *final* training features) ---
 class PatientData(BaseModel):
-    rcount: int
+    # Numeric Features (9)
+    hematocrit: float
+    neutrophils: float
+    sodium: float
+    glucose: float
+    bloodureanitro: float
+    creatinine: float
+    bmi: float
+    pulse: float
+    respiration: float
+    
+    # Categorical Features (16)
+    rcount: str
     gender: str
-    dialysis: str
-    mcd: str
-    ecodes: str
-    hmo: str
-    health: str
-    age: int
-    eclaim: float
-    pridx: int
-    sdimd: int
-    procedure: str
-    pcode: str
-    zid: str
-    plos: float
-    clmds: int
-    disch: str
-    orproc: str
-    comorb: str
-    diag: str
-    ipros: str
-    DRG: str
-    last: str
-    PG: str
-    payer: str
-    primaryphy: str
+    dialysisrenalendstage: str
+    asthma: str
+    irondef: str
+    pneum: str
+    substancedependence: str
+    psychologicaldisordermajor: str
+    depress: str
+    psychother: str
+    fibrosisandother: str
+    malnutrition: str
+    hemo: str
+    secondarydiagnosisnonicd9: str
+    discharged: str
+    facid: str
     
 # --- API Endpoint ---
-
 @app.post("/predict", tags=["Prediction"])
 def predict_length_of_stay(data: PatientData):
     if model is None:
@@ -132,7 +121,7 @@ def predict_length_of_stay(data: PatientData):
 
     try:
         input_df = pd.DataFrame([data.model_dump()])
-        prediction = model.predict(input_df)
+        prediction = model.predict(input_D=input_df)
 
         return {
             "predicted_length_of_stay": round(float(prediction[0]), 2),

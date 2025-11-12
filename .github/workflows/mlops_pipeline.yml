@@ -67,22 +67,20 @@ jobs:
           echo "Starting Data Processing and Model Training..."
           python scripts/data_processing.py
           
-          # Captures the RUN_ID printed by scripts/train.py, and writes latest_run_id.txt
           RUN_ID=$(python scripts/train.py) 
           
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
-      # --- NEW STEP: Upload latest_run_id.txt to Blob Storage ---
+      # --- CRITICAL FIX: Correct container name 'clinicops-dvc' ---
       - name: 8. Upload latest_run_id.txt to Blob Storage (Pseudo Registry Pointer)
         env:
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
-          echo "Uploading latest_run_id.txt to mlflow container..."
+          echo "Uploading latest_run_id.txt to 'clinicops-dvc' container..."
           
-          # Use Azure CLI to upload the pointer file
           az storage blob upload \
-            --container-name mlflow \
+            --container-name clinicops-dvc \
             --account-name ${{ secrets.AZURE_STORAGE_ACCOUNT }} \
             --file latest_run_id.txt \
             --name latest_model_run.txt \
@@ -132,24 +130,15 @@ jobs:
           push: true
           tags: ${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
           
-      # --- CRITICAL FIX: Direct Deployment via Azure CLI ---
-      # This ensures AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_KEY are passed directly.
-      # MLFLOW_RUN_ID is NOT passed as an environment variable anymore.
       - name: 6. Deploy to Azure Container Instances (ACI) via Azure CLI
         run: |
-          # 1. ACI NAME
           ACI_NAME="clinicops-api-${{ github.sha }}"
-          
-          # 2. IMAGE NAME
           IMAGE_NAME="${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}"
-          
-          # 3. SECRETS (Passed via environment variables for security)
           ACR_USERNAME="${{ secrets.AZURE_CR_USERNAME }}"
           ACR_PASSWORD="${{ secrets.AZURE_CR_PASSWORD }}"
           
           echo "Deploying ACI using Azure CLI..."
           
-          # AZURE CLI COMMAND: Only need storage credentials
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name $ACI_NAME \
