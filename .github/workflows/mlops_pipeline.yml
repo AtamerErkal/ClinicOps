@@ -156,7 +156,8 @@ jobs:
             --restart-policy Always \
             --environment-variables \
               AZURE_STORAGE_ACCOUNT="${{ secrets.AZURE_STORAGE_ACCOUNT }}" \
-              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}"
-              AZURE_STORAGE_ACCESS_KEY="${{ secrets.AZURE_STORAGE_KEY }}"
+              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
+              # CRITICAL ADDITION: This variable forces MLflow to use key auth.
+              AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_KEY }}" 
               
           echo "ACI Deployment with CLI initiated."
