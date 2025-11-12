@@ -1,77 +1,51 @@
-# scripts/train.py - HYBRID MLFLOW SETUP (Local Tracking + Azure Artifacts)
+# scripts/train.py - SIMPLE: Azure Blob WITHOUT Model Registry
 
 import mlflow
+import mlflow.sklearn
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression 
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 import logging
-import numpy as np
 import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# --- Azure Configuration for Artifacts Only ---
+# --- Azure Configuration ---
 AZURE_STORAGE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT", "clinicopsdvcstorage2025")
 AZURE_STORAGE_KEY = os.getenv("AZURE_STORAGE_KEY")
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = "clinicops-dvc"
 
-# Set authentication for Azure Blob
+# Set authentication
 if AZURE_STORAGE_CONNECTION_STRING:
     os.environ['AZURE_STORAGE_CONNECTION_STRING'] = AZURE_STORAGE_CONNECTION_STRING
 elif AZURE_STORAGE_KEY:
     os.environ['AZURE_STORAGE_ACCESS_KEY'] = AZURE_STORAGE_KEY
 
-# --- CRITICAL: Use LOCAL tracking, AZURE artifacts ---
-# This avoids the "unsupported URI" error while still storing models in Azure
-ARTIFACT_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net/mlruns"
-
-# Use local file system for tracking (metadata, params, metrics)
-mlflow.set_tracking_uri("file:./mlruns")
-log.info("✅ MLflow Tracking: LOCAL (file:./mlruns)")
-log.info(f"✅ Artifact Storage: AZURE ({ARTIFACT_URI})")
+# Set MLflow tracking URI to Azure (tracking + artifacts in same place)
+TRACKING_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net"
+mlflow.set_tracking_uri(TRACKING_URI)
+log.info(f"✅ MLflow Tracking URI: {TRACKING_URI}")
 
 # --- FEATURE LISTS ---
 NUMERIC_FEATURES = [
-    'hematocrit', 
-    'neutrophils', 
-    'sodium', 
-    'glucose', 
-    'bloodureanitro', 
-    'creatinine', 
-    'bmi', 
-    'pulse', 
-    'respiration'
+    'hematocrit', 'neutrophils', 'sodium', 'glucose', 
+    'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration'
 ]
 CATEGORICAL_FEATURES = [
-    'rcount',
-    'gender', 
-    'dialysisrenalendstage', 
-    'asthma', 
-    'irondef', 
-    'pneum', 
-    'substancedependence', 
-    'psychologicaldisordermajor', 
-    'depress', 
-    'psychother', 
-    'fibrosisandother', 
-    'malnutrition', 
-    'hemo', 
-    'secondarydiagnosisnonicd9', 
-    'discharged', 
-    'facid'
+    'rcount', 'gender', 'dialysisrenalendstage', 'asthma', 'irondef', 
+    'pneum', 'substancedependence', 'psychologicaldisordermajor', 
+    'depress', 'psychother', 'fibrosisandother', 'malnutrition', 
+    'hemo', 'secondarydiagnosisnonicd9', 'discharged', 'facid'
 ]
 TARGET_COLUMN = 'lengthofstay' 
 
 def load_data(file_path='data/processed/train.csv'):
-    """
-    Loads the processed training data.
-    """
+    """Loads the processed training data."""
     try:
         df = pd.read_csv(file_path)
         log.info(f"✅ Data loaded: {df.shape}")
@@ -85,30 +59,24 @@ def train_model():
     if df is None:
         return
 
-    # --- Schema Validation ---
+    # Schema Validation
     all_expected_features = set(NUMERIC_FEATURES + CATEGORICAL_FEATURES)
     loaded_features = set(df.drop(columns=[TARGET_COLUMN], errors='ignore').columns.tolist())
-    
     missing_cols = list(all_expected_features - loaded_features)
     
     if missing_cols:
         log.error(f"❌ Missing features: {missing_cols}")
-        raise ValueError(f"Feature mismatch. Missing: {missing_cols}")
+        raise ValueError(f"Missing: {missing_cols}")
     
     log.info("✅ Schema validation passed")
     
     X = df.drop(columns=[TARGET_COLUMN])
     y = df[TARGET_COLUMN]
 
-    # Preprocessing
-    numeric_transformer = Pipeline(steps=[
-        ('scaler', StandardScaler())
-    ])
-
-    categorical_transformer = Pipeline(steps=[
-        ('onehot', OneHotEncoder(handle_unknown='ignore')) 
-    ])
-
+    # Build pipeline
+    numeric_transformer = Pipeline(steps=[('scaler', StandardScaler())])
+    categorical_transformer = Pipeline(steps=[('onehot', OneHotEncoder(handle_unknown='ignore'))])
+    
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numeric_transformer, NUMERIC_FEATURES),
@@ -122,30 +90,24 @@ def train_model():
         ('regressor', LinearRegression())
     ]) 
 
-    model_name = "ClinicOpsLengthOfStayModel"
-
     try:
-        # Set experiment
+        # Set experiment (optional)
         mlflow.set_experiment("clinicops-length-of-stay")
         
-        # Start run with Azure artifact location
-        with mlflow.start_run(run_name=f"Training-{model_name}") as run:
-            # Set artifact location to Azure
-            mlflow.set_tag("mlflow.note.content", "Model artifacts stored in Azure Blob")
+        # Start MLflow run WITHOUT registered_model_name
+        with mlflow.start_run(run_name="Training-LengthOfStay") as run:
             
             log.info("🔄 Starting training...")
             sk_pipeline.fit(X, y)
             log.info("✅ Training complete")
 
-            # Log model to Azure Blob (artifact_path will create artifacts/model/)
+            # Log model to Azure Blob (NO registered_model_name parameter)
             log.info("📦 Logging model to Azure Blob...")
             mlflow.sklearn.log_model(
-                sk_pipeline, 
-                "model",
-                artifact_path=None  # Uses default artifacts location
+                sk_model=sk_pipeline,
+                artifact_path="model"  # This creates {run_id}/artifacts/model/
             )
             
-            # Get run info
             run_id = run.info.run_id
             artifact_uri = mlflow.get_artifact_uri("model")
             
@@ -153,29 +115,28 @@ def train_model():
             log.info(f"RUN_ID: {run_id}")
             log.info(f"Artifact URI: {artifact_uri}")
             
-            # Save run_id for deployment
+            # Save run_id locally for CI/CD
             with open("latest_run_id.txt", "w") as f:
                 f.write(run_id)
             
-            # Upload run_id to Azure Blob for API to read
-            from azure.storage.blob import BlobClient
+            # Upload run_id to Azure for API
+            try:
+                from azure.storage.blob import BlobClient
+                
+                credential = AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_KEY
+                blob_client = BlobClient(
+                    account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
+                    container_name=CONTAINER_NAME,
+                    blob_name="latest_model_run.txt",
+                    credential=credential
+                )
+                
+                blob_client.upload_blob(run_id, overwrite=True)
+                log.info("✅ Run ID uploaded to Azure: latest_model_run.txt")
+            except Exception as blob_error:
+                log.warning(f"⚠️ Failed to upload run_id to blob: {blob_error}")
             
-            if AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_KEY:
-                try:
-                    credential = AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_KEY
-                    blob_client = BlobClient(
-                        account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
-                        container_name=CONTAINER_NAME,
-                        blob_name="latest_model_run.txt",
-                        credential=credential
-                    )
-                    
-                    blob_client.upload_blob(run_id, overwrite=True)
-                    log.info("✅ Run ID uploaded to Azure Blob: latest_model_run.txt")
-                except Exception as blob_error:
-                    log.warning(f"⚠️ Failed to upload run_id to blob: {blob_error}")
-            
-            # Print for CI/CD
+            # Print for CI/CD pipeline
             print(run_id)
 
     except Exception as e:
