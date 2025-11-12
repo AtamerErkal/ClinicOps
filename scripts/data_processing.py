@@ -7,7 +7,6 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define paths
-# HATA DÜZELTİLDİ: .dvc uzantısı KALDIRILDI. Artık verinin kendisini okuyacak.
 RAW_DATA_PATH = os.path.join('data', 'raw', 'Patient_Stay_Data.csv')
 PROCESSED_DATA_DIR = os.path.join('data', 'processed')
 TRAIN_PATH = os.path.join(PROCESSED_DATA_DIR, 'train.csv')
