@@ -1,4 +1,4 @@
-# app/api.py - IMPROVED MODEL LOADING
+# app/api.py - FINAL FIXED VERSION
 
 import mlflow
 import mlflow.pyfunc
@@ -8,61 +8,57 @@ from azure.storage.blob import BlobClient
 import logging
 import os
 from pydantic import BaseModel
-import numpy as np 
 
 # --- Setup ---
 logging.basicConfig(level=logging.INFO)
 
-# Get environment variables passed from ACI
+# Get environment variables
 AZURE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT") 
 AZURE_KEY = os.getenv("AZURE_STORAGE_KEY") 
 AZURE_CONN_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 
 CONTAINER_NAME = "clinicops-dvc" 
 
-# CRITICAL FIX: Set the connection string globally
+# Set authentication for MLflow
 if AZURE_CONN_STRING:
     os.environ['AZURE_STORAGE_CONNECTION_STRING'] = AZURE_CONN_STRING
+    logging.info("✅ Using CONNECTION_STRING for authentication")
+elif AZURE_KEY:
+    os.environ['AZURE_STORAGE_ACCESS_KEY'] = AZURE_KEY
+    logging.info("✅ Using ACCESS_KEY for authentication")
 else:
-    if AZURE_ACCOUNT and AZURE_KEY:
-        os.environ['AZURE_STORAGE_ACCESS_KEY'] = AZURE_KEY
-
-# Set MLflow tracking URI
-TRACKING_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net"
-mlflow.set_tracking_uri(TRACKING_URI)
-logging.info(f"MLflow Tracking URI set to: {TRACKING_URI}")
+    logging.error("❌ No Azure credentials found!")
 
 MODEL_URI = None
 model = None
 
 def get_latest_run_id():
-    """
-    Downloads the latest_model_run.txt file using the direct storage key.
-    """
-    if not AZURE_ACCOUNT or not AZURE_KEY:
-        logging.error("Azure storage credentials are missing.")
+    """Downloads the latest_model_run.txt file from Azure Blob"""
+    if not AZURE_ACCOUNT or not (AZURE_KEY or AZURE_CONN_STRING):
+        logging.error("❌ Azure credentials missing")
         return None
 
     try:
         blob_url = f"https://{AZURE_ACCOUNT}.blob.core.windows.net"
+        credential = AZURE_CONN_STRING or AZURE_KEY
         
         blob_client = BlobClient(
             account_url=blob_url,
             container_name=CONTAINER_NAME,
             blob_name="latest_model_run.txt",
-            credential=AZURE_KEY
+            credential=credential
         )
 
-        logging.info(f"Attempting to download RUN_ID from {blob_client.url}")
+        logging.info(f"📥 Downloading RUN_ID from {blob_client.url}")
         
         downloaded_blob = blob_client.download_blob()
         run_id = downloaded_blob.readall().decode("utf-8").strip()
         
-        logging.info(f"✅ Successfully retrieved RUN_ID: {run_id}")
+        logging.info(f"✅ Retrieved RUN_ID: {run_id}")
         return run_id
 
     except Exception as e:
-        logging.error(f"❌ Error retrieving latest RUN_ID: {e}")
+        logging.error(f"❌ Error retrieving RUN_ID: {e}")
         return None
 
 # --- FastAPI App ---
@@ -72,61 +68,48 @@ app = FastAPI(
     description="Length of Stay Prediction API"
 )
 
-
 @app.on_event("startup")
 def load_model():
-    """
-    Loads the latest MLflow model with proper Azure Blob authentication
-    """
+    """Loads the latest MLflow model from Azure Blob Storage"""
     global model, MODEL_URI
     
     run_id = get_latest_run_id()
     if not run_id:
-        logging.error("❌ Cannot proceed without a valid RUN_ID")
+        logging.error("❌ Cannot proceed without RUN_ID")
         return
 
-    # Direct WASBS path (most reliable for Azure Blob)
-    # MLflow structure: {run_id}/artifacts/model/
-    MODEL_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/{run_id}/artifacts/model"
+    # CRITICAL: Include /mlruns/ prefix in the path
+    MODEL_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/artifacts/model"
     
     try:
         logging.info(f"🔄 Loading model from: {MODEL_URI}")
-        logging.info(f"Authentication method: {'CONNECTION_STRING' if AZURE_CONN_STRING else 'ACCESS_KEY'}")
-        
-        # Use pyfunc for better compatibility
         model = mlflow.pyfunc.load_model(MODEL_URI)
-        logging.info("✅ Model successfully loaded!")
+        logging.info("✅ Model loaded successfully!")
         
     except Exception as e:
-        logging.error(f"❌ CRITICAL: Model loading failed!")
+        logging.error(f"❌ Model loading failed: {e}")
         logging.error(f"Error type: {type(e).__name__}")
-        logging.error(f"Error details: {str(e)}")
         
-        # Try alternative path (in case MLflow uses different structure)
-        logging.info("🔄 Trying alternative path without 'artifacts'...")
-        try:
-            ALT_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/{run_id}/model"
-            logging.info(f"Alternative URI: {ALT_URI}")
-            model = mlflow.pyfunc.load_model(ALT_URI)
-            MODEL_URI = ALT_URI
-            logging.info("✅ Model loaded via alternative path!")
-        except Exception as alt_error:
-            logging.error(f"❌ Alternative path also failed: {alt_error}")
-            
-            # Last resort: try with mlruns prefix
-            logging.info("🔄 Last resort: trying with /mlruns/ prefix...")
+        # Try alternative paths as fallback
+        alternative_paths = [
+            f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/{run_id}/artifacts/model",
+            f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/model"
+        ]
+        
+        for alt_path in alternative_paths:
             try:
-                LAST_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/artifacts/model"
-                logging.info(f"Last resort URI: {LAST_URI}")
-                model = mlflow.pyfunc.load_model(LAST_URI)
-                MODEL_URI = LAST_URI
-                logging.info("✅ Model loaded via /mlruns/ path!")
-            except Exception as last_error:
-                logging.error(f"❌ All loading attempts failed. Final error: {last_error}")
+                logging.info(f"🔄 Trying alternative: {alt_path}")
+                model = mlflow.pyfunc.load_model(alt_path)
+                MODEL_URI = alt_path
+                logging.info(f"✅ Model loaded from alternative path!")
+                break
+            except Exception as alt_error:
+                logging.warning(f"⚠️ Alternative failed: {alt_error}")
+                continue
 
 # --- Data Schema ---
 class PatientData(BaseModel):
-    # Numeric Features (9)
+    # Numeric Features
     hematocrit: float
     neutrophils: float
     sodium: float
@@ -137,7 +120,7 @@ class PatientData(BaseModel):
     pulse: float
     respiration: float
     
-    # Categorical Features (16)
+    # Categorical Features
     rcount: str
     gender: str
     dialysisrenalendstage: str
@@ -161,7 +144,7 @@ def predict_length_of_stay(data: PatientData):
     if model is None:
         raise HTTPException(
             status_code=503, 
-            detail="Model not loaded. Check logs for errors."
+            detail="Model not loaded. Check logs."
         )
 
     try:
@@ -170,8 +153,7 @@ def predict_length_of_stay(data: PatientData):
 
         return {
             "predicted_length_of_stay": round(float(prediction[0]), 2),
-            "unit": "Days",
-            "model_uri": MODEL_URI
+            "unit": "Days"
         }
 
     except Exception as e:
@@ -184,21 +166,19 @@ def health_check():
         "status": "ok", 
         "model_loaded": model is not None,
         "model_uri": MODEL_URI,
-        "api_version": app.version,
-        "mlflow_tracking_uri": TRACKING_URI
+        "api_version": app.version
     }
 
-@app.get("/debug", tags=["Check"])
+@app.get("/debug", tags=["Debug"])
 def debug_info():
-    """Debug endpoint to check environment and model status"""
+    """Debug endpoint to check configuration"""
     return {
         "azure_account": AZURE_ACCOUNT,
         "container": CONTAINER_NAME,
-        "tracking_uri": TRACKING_URI,
         "model_uri": MODEL_URI,
         "model_loaded": model is not None,
-        "env_vars": {
-            "AZURE_STORAGE_CONNECTION_STRING": "SET" if AZURE_CONN_STRING else "NOT SET",
-            "AZURE_STORAGE_ACCESS_KEY": "SET" if AZURE_KEY else "NOT SET"
+        "credentials": {
+            "connection_string": "SET" if AZURE_CONN_STRING else "NOT SET",
+            "access_key": "SET" if AZURE_KEY else "NOT SET"
         }
     }
