@@ -1,4 +1,5 @@
-# scripts/train.py - FINAL SIMPLE VERSION
+# scripts/train.py - GUARANTEED WORKING VERSION
+# Local tracking + Manual Azure upload for artifacts
 
 import mlflow
 import mlflow.sklearn
@@ -20,20 +21,18 @@ AZURE_STORAGE_KEY = os.getenv("AZURE_STORAGE_KEY")
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = "clinicops-dvc"
 
-# Set authentication for MLflow
+# Verify credentials
 if AZURE_STORAGE_CONNECTION_STRING:
-    os.environ['AZURE_STORAGE_CONNECTION_STRING'] = AZURE_STORAGE_CONNECTION_STRING
     log.info("✅ Using AZURE_STORAGE_CONNECTION_STRING")
 elif AZURE_STORAGE_KEY:
-    os.environ['AZURE_STORAGE_ACCESS_KEY'] = AZURE_STORAGE_KEY
     log.info("✅ Using AZURE_STORAGE_ACCESS_KEY")
 else:
-    log.error("❌ No Azure credentials found!")
+    log.warning("⚠️ No Azure credentials found! Training will work but upload may fail.")
 
-# Set MLflow tracking URI to Azure Blob
-TRACKING_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net"
-mlflow.set_tracking_uri(TRACKING_URI)
-log.info(f"✅ MLflow Tracking URI: {TRACKING_URI}")
+# Use LOCAL filesystem for MLflow tracking (wasbs:// NOT supported for tracking)
+mlflow.set_tracking_uri("file:./mlruns")
+log.info("✅ MLflow Tracking: LOCAL (file:./mlruns)")
+log.info("✅ Artifacts will be manually uploaded to Azure")
 
 # --- FEATURE LISTS ---
 NUMERIC_FEATURES = [
@@ -57,6 +56,44 @@ def load_data(file_path='data/processed/train.csv'):
     except Exception as e:
         log.error(f"❌ Error loading data: {e}")
         return None
+
+def upload_to_azure_blob(local_dir, run_id):
+    """Upload model artifacts to Azure Blob Storage"""
+    try:
+        from azure.storage.blob import ContainerClient
+        
+        credential = AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_KEY
+        if not credential:
+            log.warning("⚠️ No Azure credentials - skipping upload")
+            return False
+            
+        container_client = ContainerClient(
+            account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
+            container_name=CONTAINER_NAME,
+            credential=credential
+        )
+        
+        # Upload all files in the model directory
+        uploaded_count = 0
+        for root, dirs, files in os.walk(local_dir):
+            for file in files:
+                local_path = os.path.join(root, file)
+                relative_path = os.path.relpath(local_path, local_dir)
+                
+                # Create blob path: mlruns/{run_id}/artifacts/model/{relative_path}
+                blob_name = f"mlruns/{run_id}/artifacts/model/{relative_path}"
+                
+                with open(local_path, 'rb') as data:
+                    blob_client = container_client.get_blob_client(blob_name)
+                    blob_client.upload_blob(data, overwrite=True)
+                    uploaded_count += 1
+                    
+        log.info(f"✅ Uploaded {uploaded_count} files to Azure Blob")
+        return True
+        
+    except Exception as e:
+        log.error(f"❌ Error uploading to Azure: {e}")
+        return False
 
 def train_model():
     df = load_data()
@@ -95,42 +132,49 @@ def train_model():
     ]) 
 
     try:
-        # Set experiment
+        # Set experiment (works with local tracking)
         mlflow.set_experiment("clinicops-length-of-stay")
         
-        # Start MLflow run - everything goes to Azure automatically
+        # Start MLflow run
         with mlflow.start_run(run_name="Training-LengthOfStay") as run:
             
             log.info("🔄 Starting training...")
             sk_pipeline.fit(X, y)
             log.info("✅ Training complete")
 
-            # Log model to Azure Blob
-            # CRITICAL: NO registered_model_name parameter
-            log.info("📦 Logging model to Azure Blob...")
+            # Log model locally
+            log.info("📦 Logging model locally...")
             mlflow.sklearn.log_model(
                 sk_model=sk_pipeline,
                 artifact_path="model"
             )
             
             run_id = run.info.run_id
-            artifact_uri = mlflow.get_artifact_uri("model")
+            local_model_path = f"mlruns/{run.info.experiment_id}/{run_id}/artifacts/model"
             
-            log.info(f"✅ Model logged successfully!")
+            log.info(f"✅ Model logged locally!")
             log.info(f"RUN_ID: {run_id}")
-            log.info(f"Artifact URI: {artifact_uri}")
+            log.info(f"Local path: {local_model_path}")
             
-            # Save run_id locally for CI/CD
+            # Upload to Azure
+            log.info("☁️ Uploading model to Azure Blob...")
+            upload_success = upload_to_azure_blob(local_model_path, run_id)
+            
+            if upload_success:
+                log.info("✅ Model successfully uploaded to Azure!")
+            else:
+                log.warning("⚠️ Model saved locally but Azure upload failed")
+            
+            # Save run_id for deployment
             with open("latest_run_id.txt", "w") as f:
                 f.write(run_id)
+            log.info("✅ Run ID saved to latest_run_id.txt")
             
-            # Also try to upload run_id pointer to Azure
+            # Upload run_id pointer to Azure
             try:
                 from azure.storage.blob import BlobClient
                 
-                # Use same credentials
                 credential = AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_KEY
-                
                 if credential:
                     blob_client = BlobClient(
                         account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
@@ -138,14 +182,10 @@ def train_model():
                         blob_name="latest_model_run.txt",
                         credential=credential
                     )
-                    
                     blob_client.upload_blob(run_id, overwrite=True)
                     log.info("✅ Run ID uploaded to Azure: latest_model_run.txt")
-                else:
-                    log.warning("⚠️ No credentials for run_id upload")
-                    
-            except Exception as blob_error:
-                log.warning(f"⚠️ Failed to upload run_id (non-critical): {blob_error}")
+            except Exception as e:
+                log.warning(f"⚠️ Failed to upload run_id pointer: {e}")
             
             # Print for CI/CD pipeline
             print(run_id)
