@@ -120,11 +120,7 @@ jobs:
           name: clinicops-api-${{ github.sha }} 
           location: GermanyWestCentral
           dns-name-label: "klinikops-api-${{ github.sha }}" 
-
-          # --- SON VE EN BASİT DÜZELTME: Virgülle ayrılmış KEY=VALUE dizisi ---
-          # Bu, Action'ın en basit string parsing formatını kullanır.
-          environment-variables: AZURE_STORAGE_ACCOUNT=${{ secrets.AZURE_STORAGE_ACCOUNT }},AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }},MLFLOW_RUN_ID=${{ env.MLFLOW_RUN_ID_VAR }}
-
+          environment-variables: 'AZURE_STORAGE_ACCOUNT=${{ secrets.AZURE_STORAGE_ACCOUNT }},AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }},MLFLOW_RUN_ID=${{ env.MLFLOW_RUN_ID_VAR }}'
           registry-username: ${{ secrets.AZURE_CR_USERNAME }}
           registry-password: ${{ secrets.AZURE_CR_PASSWORD }}
           ip-address: Public
