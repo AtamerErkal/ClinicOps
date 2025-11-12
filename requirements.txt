@@ -12,3 +12,6 @@ pydantic
 
 azure-storage-blob 
 adlfs
+
+streamlit
+requests
