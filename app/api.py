@@ -1,4 +1,4 @@
-# app/api.py
+# app/api.py - FINAL AUTH FIX
 
 import mlflow
 import pandas as pd
@@ -12,19 +12,30 @@ import numpy as np
 # --- Setup ---
 logging.basicConfig(level=logging.INFO)
 
+# Get environment variables passed from ACI
 AZURE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT") 
 AZURE_KEY = os.getenv("AZURE_STORAGE_KEY") 
+AZURE_CONN_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING") # New variable to check
 
-# --- CRITICAL FIX: Using the correct container name 'clinicops-dvc' ---
 CONTAINER_NAME = "clinicops-dvc" 
-# -------------------------------------------------------------------
+
+# CRITICAL FIX: Set the connection string globally. 
+# MLflow's WASBS client prioritizes this environment variable for authentication.
+if AZURE_CONN_STRING:
+    os.environ['AZURE_STORAGE_CONNECTION_STRING'] = AZURE_CONN_STRING
+else:
+    # If connection string is not set (e.g., during local testing), use the key as a fallback
+    # The ACI will inject the key into both variables, making this check robust.
+    if AZURE_ACCOUNT and AZURE_KEY:
+        os.environ['AZURE_STORAGE_ACCESS_KEY'] = AZURE_KEY
+        
 
 MODEL_URI = None
 model = None
 
 def get_latest_run_id():
     """
-    Downloads the latest_model_run.txt file from Azure Blob Storage to get the RUN_ID.
+    Downloads the latest_model_run.txt file using the direct storage key.
     """
     if not AZURE_ACCOUNT or not AZURE_KEY:
         logging.error("Azure storage credentials (AZURE_STORAGE_ACCOUNT or AZURE_STORAGE_KEY) are missing.")
@@ -33,6 +44,7 @@ def get_latest_run_id():
     try:
         blob_url = f"https://{AZURE_ACCOUNT}.blob.core.windows.net"
         
+        # Use BlobClient for reading the pointer file, authenticated via AZURE_KEY
         blob_client = BlobClient(
             account_url=blob_url,
             container_name=CONTAINER_NAME,
@@ -49,7 +61,7 @@ def get_latest_run_id():
         return run_id
 
     except Exception as e:
-        logging.error(f"FATAL: Error retrieving latest RUN_ID from Blob Storage. Check blob name/container/key. Error: {e}")
+        logging.error(f"FATAL: Error retrieving latest RUN_ID from Blob Storage. Error: {e}")
         return None
 
 # --- FastAPI App and Model Loading ---
@@ -63,7 +75,8 @@ app = FastAPI(
 @app.on_event("startup")
 def load_model():
     """
-    Loads the latest MLflow model from Azure Blob Storage using the pseudo-registry.
+    Loads the latest MLflow model. Authentication is now handled by the global environment variable
+    AZURE_STORAGE_CONNECTION_STRING set earlier.
     """
     global model, MODEL_URI
     
@@ -72,6 +85,7 @@ def load_model():
         logging.error("Cannot proceed without a valid RUN_ID from pointer file.")
         return
 
+    # MLflow URI: will now use the AZURE_STORAGE_CONNECTION_STRING env var to authenticate
     MODEL_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/model"
     
     try:
@@ -121,7 +135,7 @@ def predict_length_of_stay(data: PatientData):
 
     try:
         input_df = pd.DataFrame([data.model_dump()])
-        prediction = model.predict(input_D=input_df)
+        prediction = model.predict(input_df)
 
         return {
             "predicted_length_of_stay": round(float(prediction[0]), 2),
