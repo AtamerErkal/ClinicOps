@@ -21,14 +21,18 @@ CATEGORICAL_FEATURES = ['gender', 'dialysis', 'mcd', 'ecodes', 'hmo', 'health',
                         'diag', 'ipros', 'DRG', 'last', 'PG', 'payer', 'primaryphy']
 TARGET_COLUMN = 'long_stay'
 
-def load_data(file_path='data/processed/processed_data.csv'):
-    # In a real pipeline, processed data should be ready.
-    # We assume 'processed_data.csv' exists here.
+# --- CRITICAL FIX: Changed file_path to 'data/processed/train.csv' ---
+def load_data(file_path='data/processed/train.csv'):
+    """
+    Loads the processed training data (train.csv) created by data_processing.py.
+    """
     try:
         df = pd.read_csv(file_path)
         return df
     except Exception as e:
-        log.error(f"Error loading processed data: {e}")
+        # Improved error message to reflect the exact file not found
+        log.error(f"Error loading train data: [Errno 2] No such file or directory: '{file_path}'. "
+                  f"Ensure data_processing.py created the train.csv file.")
         return None
 
 def train_model():
@@ -73,11 +77,10 @@ def train_model():
             mlflow.sklearn.log_model(
                 sk_pipeline, 
                 "model", 
-                # Note: 'registered_model_name' is ignored in serverless mode, but kept for clarity.
                 registered_model_name=model_name
             )
             
-            # --- CRITICAL NEW ADDITION: Pseudo Registry File Creation ---
+            # --- Pseudo Registry Logic ---
             # 1. Get the current Run ID
             run_id = run.info.run_id
             
