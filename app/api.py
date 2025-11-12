@@ -76,7 +76,7 @@ app = FastAPI(
 @app.on_event("startup")
 def load_model():
     """
-    Loads the latest MLflow model using runs:/ URI scheme (recommended)
+    Loads the latest MLflow model with proper Azure Blob authentication
     """
     global model, MODEL_URI
     
@@ -85,28 +85,44 @@ def load_model():
         logging.error("❌ Cannot proceed without a valid RUN_ID")
         return
 
-    # METHOD 1: Using runs:/ URI (Recommended - MLflow handles paths automatically)
-    MODEL_URI = f"runs:/{run_id}/model"
+    # Direct WASBS path (most reliable for Azure Blob)
+    # MLflow structure: {run_id}/artifacts/model/
+    MODEL_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/{run_id}/artifacts/model"
     
     try:
-        logging.info(f"🔄 Loading model from MLflow URI: {MODEL_URI}")
+        logging.info(f"🔄 Loading model from: {MODEL_URI}")
+        logging.info(f"Authentication method: {'CONNECTION_STRING' if AZURE_CONN_STRING else 'ACCESS_KEY'}")
+        
+        # Use pyfunc for better compatibility
         model = mlflow.pyfunc.load_model(MODEL_URI)
         logging.info("✅ Model successfully loaded!")
         
     except Exception as e:
-        logging.error(f"❌ CRITICAL: Error loading model. Error: {e}")
+        logging.error(f"❌ CRITICAL: Model loading failed!")
+        logging.error(f"Error type: {type(e).__name__}")
+        logging.error(f"Error details: {str(e)}")
         
-        # Fallback: Try direct WASBS path
-        logging.info("🔄 Attempting fallback with direct WASBS path...")
+        # Try alternative path (in case MLflow uses different structure)
+        logging.info("🔄 Trying alternative path without 'artifacts'...")
         try:
-            # Note: NO /mlruns/ prefix, just run_id directly
-            FALLBACK_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/{run_id}/artifacts/model"
-            logging.info(f"Fallback URI: {FALLBACK_URI}")
-            model = mlflow.pyfunc.load_model(FALLBACK_URI)
-            MODEL_URI = FALLBACK_URI
-            logging.info("✅ Model loaded via fallback path!")
-        except Exception as fallback_error:
-            logging.error(f"❌ Fallback also failed: {fallback_error}")
+            ALT_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/{run_id}/model"
+            logging.info(f"Alternative URI: {ALT_URI}")
+            model = mlflow.pyfunc.load_model(ALT_URI)
+            MODEL_URI = ALT_URI
+            logging.info("✅ Model loaded via alternative path!")
+        except Exception as alt_error:
+            logging.error(f"❌ Alternative path also failed: {alt_error}")
+            
+            # Last resort: try with mlruns prefix
+            logging.info("🔄 Last resort: trying with /mlruns/ prefix...")
+            try:
+                LAST_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/artifacts/model"
+                logging.info(f"Last resort URI: {LAST_URI}")
+                model = mlflow.pyfunc.load_model(LAST_URI)
+                MODEL_URI = LAST_URI
+                logging.info("✅ Model loaded via /mlruns/ path!")
+            except Exception as last_error:
+                logging.error(f"❌ All loading attempts failed. Final error: {last_error}")
 
 # --- Data Schema ---
 class PatientData(BaseModel):
