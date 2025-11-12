@@ -1,4 +1,4 @@
-# scripts/train.py - FINAL REGRESSION SETUP
+# scripts/train.py - FINAL FIX for 'rcount'
 
 import mlflow
 import pandas as pd
@@ -14,9 +14,9 @@ import numpy as np
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# --- CRITICAL FIX: FEATURE LISTS MATCHING RAW DATA ---
+# --- CRITICAL FIX: 'rcount' moved from NUMERIC to CATEGORICAL ---
 NUMERIC_FEATURES = [
-    'rcount', 
+    # 'rcount' was removed from this list
     'hematocrit', 
     'neutrophils', 
     'sodium', 
@@ -28,6 +28,7 @@ NUMERIC_FEATURES = [
     'respiration'
 ]
 CATEGORICAL_FEATURES = [
+    'rcount', # <--- 'rcount' is now correctly treated as categorical
     'gender', 
     'dialysisrenalendstage', 
     'asthma', 
@@ -42,10 +43,10 @@ CATEGORICAL_FEATURES = [
     'hemo', 
     'secondarydiagnosisnonicd9', 
     'discharged', 
-    'facid' # <--- This is where it's expected
+    'facid'
 ]
 TARGET_COLUMN = 'lengthofstay' 
-# ---------------------------------------------------
+# ----------------------------------------------------------------------
 
 def load_data(file_path='data/processed/train.csv'):
     """
@@ -65,6 +66,7 @@ def train_model():
 
     # --- Schema Validation Check ---
     all_expected_features = set(NUMERIC_FEATURES + CATEGORICAL_FEATURES)
+    # Check against the columns *after* dropping the target
     loaded_features = set(df.drop(columns=[TARGET_COLUMN], errors='ignore').columns.tolist())
     
     missing_cols = list(all_expected_features - loaded_features)
@@ -102,7 +104,7 @@ def train_model():
     model_name = "ClinicOpsLengthOfStayModel"
 
     try:
-        with mlflow.start_run(run_name=f"Training Run - {model_name}") as run:
+        with mlflow.start_run(run_namef"Training Run - {model_name}") as run:
             log.info("Starting model training...")
             sk_pipeline.fit(X, y)
             log.info("Model training complete.")
@@ -119,6 +121,7 @@ def train_model():
             with open("latest_run_id.txt", "w") as f:
                 f.write(run_id)
             
+            # This print is essential for the CI/CD pipeline
             print(run_id) 
 
     except Exception as e:
