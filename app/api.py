@@ -1,4 +1,4 @@
-# app/api.py - FINAL FIXED VERSION
+# app/api.py - FINAL FIXED VERSION WITH MLFLOW REGISTRY
 
 import mlflow
 import mlflow.pyfunc
@@ -39,7 +39,7 @@ def get_latest_run_id():
         return None
 
     try:
-        from azure.core.credentials import AzureNamedKeyCredential  # EKLE: Credential fix
+        from azure.core.credentials import AzureNamedKeyCredential
         
         blob_url = f"https://{AZURE_ACCOUNT}.blob.core.windows.net"
         if AZURE_CONN_STRING:
@@ -51,7 +51,7 @@ def get_latest_run_id():
             account_url=blob_url,
             container_name=CONTAINER_NAME,
             blob_name="latest_model_run.txt",
-            credential=credential  # DÜZELT: Doğru tip
+            credential=credential
         )
 
         logging.info(f"📥 Downloading RUN_ID from {blob_client.url}")
@@ -75,10 +75,10 @@ app = FastAPI(
 
 @app.on_event("startup")
 def load_model():
-    """Loads the latest MLflow model from Azure Blob Storage"""
+    """Loads the latest MLflow model from Registry (preferred) or Azure Blob fallback"""
     global model, MODEL_URI
     
-    # MLflow auth env'larını netleştir (conn string varsa kullan, yoksa key)
+    # MLflow auth env'larını netleştir
     if AZURE_CONN_STRING:
         os.environ['AZURE_STORAGE_CONNECTION_STRING'] = AZURE_CONN_STRING
         logging.info("✅ MLflow: Using CONNECTION_STRING")
@@ -87,6 +87,19 @@ def load_model():
         os.environ['AZURE_STORAGE_ACCESS_KEY'] = AZURE_KEY
         logging.info("✅ MLflow: Using ACCOUNT + ACCESS_KEY")
     
+    # YENİ: Önce Registry'den Load Et (auth sorunu yok)
+    model_name = "length_of_stay_model"
+    version = "latest"  # Veya spesifik: "1"
+    try:
+        logging.info(f"🔄 Loading from registry: models://{model_name}/{version}")
+        model = mlflow.pyfunc.load_model(f"models://{model_name}/{version}")
+        MODEL_URI = f"models://{model_name}/{version}"
+        logging.info("✅ Model loaded from registry!")
+        return  # Başarılıysa çık
+    except Exception as reg_error:
+        logging.warning(f"⚠️ Registry load failed: {reg_error}. Falling back to wasbs...")
+    
+    # Fallback: Eski wasbs yolu
     run_id = get_latest_run_id()
     if not run_id:
         logging.error("❌ Cannot proceed without RUN_ID")
@@ -103,7 +116,7 @@ def load_model():
         logging.error(f"❌ Model loading failed: {e}")
         logging.error(f"Error type: {type(e).__name__}")
         
-        # Fallback yollar (daha fazla logging ekle)
+        # Fallback yollar
         alternative_paths = [
             f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/{run_id}/artifacts/model",
             f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/model"
@@ -115,7 +128,7 @@ def load_model():
                 model = mlflow.pyfunc.load_model(alt_path)
                 MODEL_URI = alt_path
                 logging.info(f"✅ Model loaded from alternative {i}!")
-                return  # Başarılıysa çık
+                return
             except Exception as alt_error:
                 logging.warning(f"⚠️ Alternative {i} failed: {alt_error}")
                 continue

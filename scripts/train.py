@@ -1,5 +1,5 @@
 # scripts/train.py - GUARANTEED WORKING VERSION
-# Local tracking + Manual Azure upload for artifacts
+# Local tracking + Manual Azure upload for artifacts + MLflow Model Registry
 
 import mlflow
 import mlflow.sklearn
@@ -61,7 +61,7 @@ def upload_to_azure_blob(local_dir, run_id):
     """Upload model artifacts to Azure Blob Storage"""
     try:
         from azure.storage.blob import ContainerClient
-        from azure.core.credentials import AzureNamedKeyCredential  # EKLE: Credential fix
+        from azure.core.credentials import AzureNamedKeyCredential
         
         if AZURE_STORAGE_CONNECTION_STRING:
             credential = AZURE_STORAGE_CONNECTION_STRING
@@ -79,7 +79,7 @@ def upload_to_azure_blob(local_dir, run_id):
         container_client = ContainerClient(
             account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
             container_name=CONTAINER_NAME,
-            credential=credential  # DÜZELT: Doğru tip
+            credential=credential
         )
         
         # Upload all files in the model directory
@@ -165,6 +165,15 @@ def train_model():
             log.info(f"RUN_ID: {run_id}")
             log.info(f"Local path: {local_model_path}")
             
+            # YENİ: Model'i Registry'ye Register Et
+            model_name = "length_of_stay_model"  # Sabit model adı
+            model_uri = f"runs:/{run_id}/model"  # Local run URI'si
+            try:
+                registered_model_version = mlflow.register_model(model_uri, model_name)
+                log.info(f"✅ Model registered: {model_name} v{registered_model_version.version}")
+            except Exception as reg_error:
+                log.warning(f"⚠️ Registry registration failed: {reg_error}")
+            
             # Upload to Azure
             log.info("☁️ Uploading model to Azure Blob...")
             upload_success = upload_to_azure_blob(local_model_path, run_id)
@@ -182,7 +191,7 @@ def train_model():
             # Upload run_id pointer to Azure
             try:
                 from azure.storage.blob import BlobClient
-                from azure.core.credentials import AzureNamedKeyCredential  # EKLE: Credential fix
+                from azure.core.credentials import AzureNamedKeyCredential
                 
                 if AZURE_STORAGE_CONNECTION_STRING:
                     credential = AZURE_STORAGE_CONNECTION_STRING
@@ -195,7 +204,7 @@ def train_model():
                     account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
                     container_name=CONTAINER_NAME,
                     blob_name="latest_model_run.txt",
-                    credential=credential  # DÜZELT: Doğru tip
+                    credential=credential
                 )
                 blob_client.upload_blob(run_id, overwrite=True)
                 log.info("✅ Run ID uploaded to Azure: latest_model_run.txt")
