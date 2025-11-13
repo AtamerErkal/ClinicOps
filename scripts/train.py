@@ -1,5 +1,4 @@
-# scripts/train.py - GUARANTEED WORKING VERSION
-# Local tracking + Manual Azure upload for artifacts + MLflow Model Registry
+# scripts/train.py - AML MLflow Integration + Registry
 
 import mlflow
 import mlflow.sklearn
@@ -21,6 +20,11 @@ AZURE_STORAGE_KEY = os.getenv("AZURE_STORAGE_KEY")
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = "clinicops-dvc"
 
+# AML Configuration
+AML_TRACKING_URI = os.getenv("AML_TRACKING_URI")
+AML_RESOURCE_GROUP = os.getenv("AML_RESOURCE_GROUP")
+AML_WORKSPACE_NAME = os.getenv("AML_WORKSPACE_NAME")
+
 # Verify credentials
 if AZURE_STORAGE_CONNECTION_STRING:
     log.info("✅ Using AZURE_STORAGE_CONNECTION_STRING")
@@ -29,12 +33,17 @@ elif AZURE_STORAGE_KEY:
 else:
     log.warning("⚠️ No Azure credentials found! Training will work but upload may fail.")
 
-# Use LOCAL filesystem for MLflow tracking (wasbs:// NOT supported for tracking)
-mlflow.set_tracking_uri("file:./mlruns")
-log.info("✅ MLflow Tracking: LOCAL (file:./mlruns)")
+# Set MLflow Tracking URI to AML (if set, else local fallback)
+if AML_TRACKING_URI:
+    mlflow.set_tracking_uri(AML_TRACKING_URI)
+    log.info(f"✅ MLflow Tracking: AML Workspace ({AML_TRACKING_URI})")
+else:
+    mlflow.set_tracking_uri("file:./mlruns")
+    log.info("✅ MLflow Tracking: LOCAL (file:./mlruns)")
+
 log.info("✅ Artifacts will be manually uploaded to Azure")
 
-# --- FEATURE LISTS ---
+# --- FEATURE LISTS --- (aynı)
 NUMERIC_FEATURES = [
     'hematocrit', 'neutrophils', 'sodium', 'glucose', 
     'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration'
@@ -58,7 +67,7 @@ def load_data(file_path='data/processed/train.csv'):
         return None
 
 def upload_to_azure_blob(local_dir, run_id):
-    """Upload model artifacts to Azure Blob Storage"""
+    """Upload model artifacts to Azure Blob Storage""" (mevcut kod aynı)
     try:
         from azure.storage.blob import ContainerClient
         from azure.core.credentials import AzureNamedKeyCredential
@@ -82,14 +91,12 @@ def upload_to_azure_blob(local_dir, run_id):
             credential=credential
         )
         
-        # Upload all files in the model directory
         uploaded_count = 0
         for root, dirs, files in os.walk(local_dir):
             for file in files:
                 local_path = os.path.join(root, file)
                 relative_path = os.path.relpath(local_path, local_dir)
                 
-                # Create blob path: mlruns/{run_id}/artifacts/model/{relative_path}
                 blob_name = f"mlruns/{run_id}/artifacts/model/{relative_path}"
                 
                 with open(local_path, 'rb') as data:
@@ -109,7 +116,7 @@ def train_model():
     if df is None:
         return
 
-    # Schema Validation
+    # Schema Validation (aynı)
     all_expected_features = set(NUMERIC_FEATURES + CATEGORICAL_FEATURES)
     loaded_features = set(df.drop(columns=[TARGET_COLUMN], errors='ignore').columns.tolist())
     missing_cols = list(all_expected_features - loaded_features)
@@ -123,7 +130,7 @@ def train_model():
     X = df.drop(columns=[TARGET_COLUMN])
     y = df[TARGET_COLUMN]
 
-    # Build pipeline
+    # Build pipeline (aynı)
     numeric_transformer = Pipeline(steps=[('scaler', StandardScaler())])
     categorical_transformer = Pipeline(steps=[('onehot', OneHotEncoder(handle_unknown='ignore'))])
     
@@ -141,7 +148,7 @@ def train_model():
     ]) 
 
     try:
-        # Set experiment (works with local tracking)
+        # Set experiment
         mlflow.set_experiment("clinicops-length-of-stay")
         
         # Start MLflow run
@@ -151,44 +158,44 @@ def train_model():
             sk_pipeline.fit(X, y)
             log.info("✅ Training complete")
 
-            # Log model locally
-            log.info("📦 Logging model locally...")
+            # Log model locally (AML artifacts'ı otomatik yönetir)
+            log.info("📦 Logging model...")
             mlflow.sklearn.log_model(
                 sk_model=sk_pipeline,
                 artifact_path="model"
             )
             
             run_id = run.info.run_id
-            local_model_path = f"mlruns/{run.info.experiment_id}/{run_id}/artifacts/model"
+            local_model_path = f"mlruns/{run.info.experiment_id}/{run_id}/artifacts/model" if not AML_TRACKING_URI else f"runs:/{run_id}/model"
             
-            log.info(f"✅ Model logged locally!")
+            log.info(f"✅ Model logged!")
             log.info(f"RUN_ID: {run_id}")
             log.info(f"Local path: {local_model_path}")
             
-            # YENİ: Model'i Registry'ye Register Et
-            model_name = "length_of_stay_model"  # Sabit model adı
-            model_uri = f"runs:/{run_id}/model"  # Local run URI'si
+            # YENİ: Model'i AML Registry'ye Register Et (AML backend ile)
+            model_name = "length_of_stay_model"
+            model_uri = f"runs:/{run_id}/model"
             try:
                 registered_model_version = mlflow.register_model(model_uri, model_name)
-                log.info(f"✅ Model registered: {model_name} v{registered_model_version.version}")
+                log.info(f"✅ Model registered in AML: {model_name} v{registered_model_version.version}")
             except Exception as reg_error:
                 log.warning(f"⚠️ Registry registration failed: {reg_error}")
             
-            # Upload to Azure
+            # Upload to Azure (AML artifacts'ı da Blob'a yedekle)
             log.info("☁️ Uploading model to Azure Blob...")
             upload_success = upload_to_azure_blob(local_model_path, run_id)
             
             if upload_success:
-                log.info("✅ Model successfully uploaded to Azure!")
+                log.info("✅ Model uploaded to Azure!")
             else:
                 log.warning("⚠️ Model saved locally but Azure upload failed")
             
-            # Save run_id for deployment
+            # Save run_id (aynı)
             with open("latest_run_id.txt", "w") as f:
                 f.write(run_id)
             log.info("✅ Run ID saved to latest_run_id.txt")
             
-            # Upload run_id pointer to Azure
+            # Upload run_id pointer to Azure (aynı)
             try:
                 from azure.storage.blob import BlobClient
                 from azure.core.credentials import AzureNamedKeyCredential
@@ -211,7 +218,7 @@ def train_model():
             except Exception as e:
                 log.warning(f"⚠️ Failed to upload run_id pointer: {e}")
             
-            # Print for CI/CD pipeline
+            # Print for CI/CD
             print(run_id)
 
     except Exception as e:
