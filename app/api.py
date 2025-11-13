@@ -34,19 +34,24 @@ model = None
 
 def get_latest_run_id():
     """Downloads the latest_model_run.txt file from Azure Blob"""
-    if not AZURE_ACCOUNT or not (AZURE_KEY or AZURE_CONN_STRING):
+    if not AZURE_ACCOUNT or not (AZURE_CONN_STRING or AZURE_KEY):
         logging.error("❌ Azure credentials missing")
         return None
 
     try:
-        blob_url = f"https://{AZURE_ACCOUNT}.blob.core.windows.net"
-        credential = AZURE_CONN_STRING or AZURE_KEY
+        from azure.core.credentials import AzureNamedKeyCredential  # EKLE: Credential fix
         
+        blob_url = f"https://{AZURE_ACCOUNT}.blob.core.windows.net"
+        if AZURE_CONN_STRING:
+            credential = AZURE_CONN_STRING
+        else:  # AZURE_KEY kullan
+            credential = AzureNamedKeyCredential(name=AZURE_ACCOUNT, key=AZURE_KEY)
+            
         blob_client = BlobClient(
             account_url=blob_url,
             container_name=CONTAINER_NAME,
             blob_name="latest_model_run.txt",
-            credential=credential
+            credential=credential  # DÜZELT: Doğru tip
         )
 
         logging.info(f"📥 Downloading RUN_ID from {blob_client.url}")
@@ -73,12 +78,20 @@ def load_model():
     """Loads the latest MLflow model from Azure Blob Storage"""
     global model, MODEL_URI
     
+    # MLflow auth env'larını netleştir (conn string varsa kullan, yoksa key)
+    if AZURE_CONN_STRING:
+        os.environ['AZURE_STORAGE_CONNECTION_STRING'] = AZURE_CONN_STRING
+        logging.info("✅ MLflow: Using CONNECTION_STRING")
+    else:
+        os.environ['AZURE_STORAGE_ACCOUNT'] = AZURE_ACCOUNT
+        os.environ['AZURE_STORAGE_ACCESS_KEY'] = AZURE_KEY
+        logging.info("✅ MLflow: Using ACCOUNT + ACCESS_KEY")
+    
     run_id = get_latest_run_id()
     if not run_id:
         logging.error("❌ Cannot proceed without RUN_ID")
         return
 
-    # CRITICAL: Include /mlruns/ prefix in the path
     MODEL_URI = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/artifacts/model"
     
     try:
@@ -90,22 +103,24 @@ def load_model():
         logging.error(f"❌ Model loading failed: {e}")
         logging.error(f"Error type: {type(e).__name__}")
         
-        # Try alternative paths as fallback
+        # Fallback yollar (daha fazla logging ekle)
         alternative_paths = [
             f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/{run_id}/artifacts/model",
             f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/model"
         ]
         
-        for alt_path in alternative_paths:
+        for i, alt_path in enumerate(alternative_paths, 1):
             try:
-                logging.info(f"🔄 Trying alternative: {alt_path}")
+                logging.info(f"🔄 Trying alternative {i}: {alt_path}")
                 model = mlflow.pyfunc.load_model(alt_path)
                 MODEL_URI = alt_path
-                logging.info(f"✅ Model loaded from alternative path!")
-                break
+                logging.info(f"✅ Model loaded from alternative {i}!")
+                return  # Başarılıysa çık
             except Exception as alt_error:
-                logging.warning(f"⚠️ Alternative failed: {alt_error}")
+                logging.warning(f"⚠️ Alternative {i} failed: {alt_error}")
                 continue
+        
+        logging.error("❌ All loading attempts failed. Check Azure portal for blob existence.")
 
 # --- Data Schema ---
 class PatientData(BaseModel):

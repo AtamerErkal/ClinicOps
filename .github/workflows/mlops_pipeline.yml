@@ -157,7 +157,6 @@ jobs:
             --environment-variables \
               AZURE_STORAGE_ACCOUNT="${{ secrets.AZURE_STORAGE_ACCOUNT }}" \
               AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
-              # CRITICAL ADDITION: This variable forces MLflow to use key auth.
-              AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_KEY }}" 
+              # DÜZELT: Hatalı AZURE_STORAGE_CONNECTION_STRING satırı kaldırıldı
               
           echo "ACI Deployment with CLI initiated."
