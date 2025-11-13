@@ -1,4 +1,4 @@
-# .github/workflows/mlops_pipeline.yml - AML Entegrasyonu (Syntax Fixed)
+# .github/workflows/mlops_pipeline.yml - AML Integration (Syntax Fixed)
 
 name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
@@ -20,10 +20,10 @@ jobs:
       MLFLOW_RUN_ID: ${{ steps.train_model.outputs.MLFLOW_RUN_ID }} 
     
     steps:
-      - name: 0.5. Azure Login for AML (NEW: Train Auth)
+      - name: 0.5. Azure Login for AML
         uses: azure/login@v1
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}  # Service Principal
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: 1. Checkout Repository and History
         uses: actions/checkout@v4
@@ -41,7 +41,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install 'dvc[azure]'
-          pip install azureml-mlflow  # Registry için
+          pip install azureml-mlflow
 
       - name: 4. Run Pytest
         env:
@@ -82,7 +82,6 @@ jobs:
           
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
-      # --- CRITICAL FIX: Correct container name 'clinicops-dvc' ---
       - name: 8. Upload latest_run_id.txt to Blob Storage (Pseudo Registry Pointer)
         env:
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
