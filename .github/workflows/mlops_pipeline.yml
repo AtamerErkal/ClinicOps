@@ -63,15 +63,16 @@ jobs:
         id: train_model
         env:
           PYTHONPATH: .
-          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}  # YENİ: Secrets ekle
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}  # YENİ: Upload için
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AML_TRACKING_URI: ${{ secrets.AML_TRACKING_URI }}  # YENİ: AML Secrets
+          AML_RESOURCE_GROUP: ${{ secrets.AML_RESOURCE_GROUP }}
+          AML_WORKSPACE_NAME: ${{ secrets.AML_WORKSPACE_NAME }}
         run: |
           echo "Starting Data Processing and Model Training..."
           python scripts/data_processing.py
-          
           RUN_ID=$(python scripts/train.py) 
-          
-          echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
+          echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
 
       # --- CRITICAL FIX: Correct container name 'clinicops-dvc' ---
       - name: 8. Upload latest_run_id.txt to Blob Storage (Pseudo Registry Pointer)
@@ -141,8 +142,6 @@ jobs:
           
           echo "Deploying ACI using Azure CLI..."
           
-          CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=${{ secrets.AZURE_STORAGE_ACCOUNT }};AccountKey=${{ secrets.AZURE_STORAGE_KEY }};EndpointSuffix=core.windows.net"
-          
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name $ACI_NAME \
@@ -161,6 +160,6 @@ jobs:
             --environment-variables \
               AZURE_STORAGE_ACCOUNT="${{ secrets.AZURE_STORAGE_ACCOUNT }}" \
               AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
-              AZURE_STORAGE_CONNECTION_STRING="$CONNECTION_STRING"  # YENİ: Tam String Ekle
+              AML_TRACKING_URI="${{ secrets.AML_TRACKING_URI }}"  # YENİ: ACI'ye AML URI
               
           echo "ACI Deployment with CLI initiated."
