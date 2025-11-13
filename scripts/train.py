@@ -61,16 +61,25 @@ def upload_to_azure_blob(local_dir, run_id):
     """Upload model artifacts to Azure Blob Storage"""
     try:
         from azure.storage.blob import ContainerClient
+        from azure.core.credentials import AzureNamedKeyCredential  # EKLE: Credential fix
         
-        credential = AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_KEY
-        if not credential:
+        if AZURE_STORAGE_CONNECTION_STRING:
+            credential = AZURE_STORAGE_CONNECTION_STRING
+            log.info("✅ Using CONNECTION_STRING")
+        elif AZURE_STORAGE_KEY:
+            credential = AzureNamedKeyCredential(
+                name=AZURE_STORAGE_ACCOUNT, 
+                key=AZURE_STORAGE_KEY
+            )
+            log.info("✅ Using ACCOUNT KEY with NamedKeyCredential")
+        else:
             log.warning("⚠️ No Azure credentials - skipping upload")
             return False
             
         container_client = ContainerClient(
             account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
             container_name=CONTAINER_NAME,
-            credential=credential
+            credential=credential  # DÜZELT: Doğru tip
         )
         
         # Upload all files in the model directory
@@ -173,17 +182,23 @@ def train_model():
             # Upload run_id pointer to Azure
             try:
                 from azure.storage.blob import BlobClient
+                from azure.core.credentials import AzureNamedKeyCredential  # EKLE: Credential fix
                 
-                credential = AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_KEY
-                if credential:
-                    blob_client = BlobClient(
-                        account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
-                        container_name=CONTAINER_NAME,
-                        blob_name="latest_model_run.txt",
-                        credential=credential
-                    )
-                    blob_client.upload_blob(run_id, overwrite=True)
-                    log.info("✅ Run ID uploaded to Azure: latest_model_run.txt")
+                if AZURE_STORAGE_CONNECTION_STRING:
+                    credential = AZURE_STORAGE_CONNECTION_STRING
+                elif AZURE_STORAGE_KEY:
+                    credential = AzureNamedKeyCredential(name=AZURE_STORAGE_ACCOUNT, key=AZURE_STORAGE_KEY)
+                else:
+                    raise ValueError("No credentials")
+                    
+                blob_client = BlobClient(
+                    account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
+                    container_name=CONTAINER_NAME,
+                    blob_name="latest_model_run.txt",
+                    credential=credential  # DÜZELT: Doğru tip
+                )
+                blob_client.upload_blob(run_id, overwrite=True)
+                log.info("✅ Run ID uploaded to Azure: latest_model_run.txt")
             except Exception as e:
                 log.warning(f"⚠️ Failed to upload run_id pointer: {e}")
             
