@@ -141,6 +141,8 @@ jobs:
           
           echo "Deploying ACI using Azure CLI..."
           
+          CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=${{ secrets.AZURE_STORAGE_ACCOUNT }};AccountKey=${{ secrets.AZURE_STORAGE_KEY }};EndpointSuffix=core.windows.net"
+          
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name $ACI_NAME \
@@ -159,5 +161,6 @@ jobs:
             --environment-variables \
               AZURE_STORAGE_ACCOUNT="${{ secrets.AZURE_STORAGE_ACCOUNT }}" \
               AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
+              AZURE_STORAGE_CONNECTION_STRING="$CONNECTION_STRING"  # YENİ: Tam String Ekle
               
           echo "ACI Deployment with CLI initiated."
