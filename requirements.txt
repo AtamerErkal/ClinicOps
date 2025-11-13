@@ -16,3 +16,4 @@ pydantic
 scikit-learn
 pandas
 azureml-mlflow
+azure-ai-ml==1.17.0

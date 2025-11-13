@@ -41,7 +41,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install 'dvc[azure]'
-          pip install azureml-mlflow
+          pip install azure-ai-ml
 
       - name: 4. Run Pytest
         env:
