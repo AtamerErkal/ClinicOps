@@ -15,4 +15,6 @@ mlruns/
 
 # IDE
 .vscode/
-.idea/
+.idea/conn.txt 
+"*.key" 
+"*.txt"   # Opsiyonel, connection dosyalar’ iáin
