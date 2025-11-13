@@ -1,7 +1,6 @@
-# scripts/train.py - AML MLflow Integration + Registry
+# scripts/train.py - AML SDK Model Registration
 
 import mlflow
-import mlflow.sklearn
 import pandas as pd
 from sklearn.linear_model import LinearRegression 
 from sklearn.pipeline import Pipeline
@@ -9,6 +8,12 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 import logging
 import os
+import pickle  # Model serialize için
+
+# YENİ: AML SDK
+from azure.ai.ml import MLClient
+from azure.ai.ml.entities import Model
+from azure.identity import DefaultAzureCredential
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,7 +38,7 @@ elif AZURE_STORAGE_KEY:
 else:
     log.warning("⚠️ No Azure credentials found! Training will work but upload may fail.")
 
-# Set MLflow Tracking URI to AML (if set, else local fallback)
+# Set MLflow Tracking URI to AML (tracking için)
 if AML_TRACKING_URI:
     mlflow.set_tracking_uri(AML_TRACKING_URI)
     log.info(f"✅ MLflow Tracking: AML Workspace ({AML_TRACKING_URI})")
@@ -91,14 +96,12 @@ def upload_to_azure_blob(local_dir, run_id):
             credential=credential
         )
         
-        # Upload all files in the model directory
         uploaded_count = 0
         for root, dirs, files in os.walk(local_dir):
             for file in files:
                 local_path = os.path.join(root, file)
                 relative_path = os.path.relpath(local_path, local_dir)
                 
-                # Create blob path: mlruns/{run_id}/artifacts/model/{relative_path}
                 blob_name = f"mlruns/{run_id}/artifacts/model/{relative_path}"
                 
                 with open(local_path, 'rb') as data:
@@ -118,7 +121,7 @@ def train_model():
     if df is None:
         return
 
-    # Schema Validation
+    # Schema Validation (aynı)
     all_expected_features = set(NUMERIC_FEATURES + CATEGORICAL_FEATURES)
     loaded_features = set(df.drop(columns=[TARGET_COLUMN], errors='ignore').columns.tolist())
     missing_cols = list(all_expected_features - loaded_features)
@@ -132,7 +135,7 @@ def train_model():
     X = df.drop(columns=[TARGET_COLUMN])
     y = df[TARGET_COLUMN]
 
-    # Build pipeline
+    # Build pipeline (aynı)
     numeric_transformer = Pipeline(steps=[('scaler', StandardScaler())])
     categorical_transformer = Pipeline(steps=[('onehot', OneHotEncoder(handle_unknown='ignore'))])
     
@@ -150,7 +153,7 @@ def train_model():
     ]) 
 
     try:
-        # Set experiment
+        # Set experiment (tracking için)
         mlflow.set_experiment("clinicops-length-of-stay")
         
         # Start MLflow run
@@ -160,32 +163,48 @@ def train_model():
             sk_pipeline.fit(X, y)
             log.info("✅ Training complete")
 
-            # Log model locally (AML artifacts'ı otomatik yönetir)
-            log.info("📦 Logging model...")
-            mlflow.sklearn.log_model(
-                sk_model=sk_pipeline,
-                artifact_path="model"
-            )
+            # Log metrics and params (tracking için)
+            mlflow.log_param("model_type", "LinearRegression")
+            mlflow.log_param("scaler", "StandardScaler")
+            mlflow.log_metric("train_samples", len(X))
             
             run_id = run.info.run_id
-            local_model_path = f"mlruns/{run.info.experiment_id}/{run_id}/artifacts/model" if not AML_TRACKING_URI else f"runs:/{run_id}/model"
-            
-            log.info(f"✅ Model logged!")
             log.info(f"RUN_ID: {run_id}")
-            log.info(f"Local path: {local_model_path}")
             
-            # Model'i AML Registry'ye Register Et (AML backend ile)
-            model_name = "length_of_stay_model"
-            model_uri = f"runs:/{run_id}/model"
-            try:
-                registered_model_version = mlflow.register_model(model_uri, model_name)
-                log.info(f"✅ Model registered in AML: {model_name} v{registered_model_version.version}")
-            except Exception as reg_error:
-                log.warning(f"⚠️ Registry registration failed: {reg_error}")
+            # YENİ: Model'i Serialize Et ve AML SDK ile Register Et (404 hatasını atla)
+            model_path = "model.pkl"
+            with open(model_path, 'wb') as f:
+                pickle.dump(sk_pipeline, f)
+            mlflow.log_artifact(model_path, artifact_path="model")  # Artifact log (registry olmadan)
             
-            # Upload to Azure (AML artifacts'ı da Blob'a yedekle)
+            if AML_RESOURCE_GROUP and AML_WORKSPACE_NAME:
+                try:
+                    # AML Client Oluştur
+                    credential = DefaultAzureCredential()
+                    ml_client = MLClient(
+                        credential=credential,
+                        subscription_id="2b434255-f6ee-4abd-a6e4-50cf432a6567",  # Senin sub ID'n
+                        resource_group_name=AML_RESOURCE_GROUP,
+                        workspace_name=AML_WORKSPACE_NAME
+                    )
+                    
+                    # Model'i AML'ye Register Et
+                    model = Model(
+                        path=model_path,
+                        name="length_of_stay_model",
+                        description="Length of Stay Prediction Model",
+                        type="custom_model"
+                    )
+                    registered_model = ml_client.models.register_or_update(model)
+                    log.info(f"✅ Model registered in AML: {registered_model.name} v{registered_model.version}")
+                except Exception as aml_error:
+                    log.warning(f"⚠️ AML registration failed: {aml_error}")
+            else:
+                log.warning("⚠️ No AML config—skipping AML registration")
+            
+            # Upload to Azure Blob (yedek)
             log.info("☁️ Uploading model to Azure Blob...")
-            upload_success = upload_to_azure_blob(local_model_path, run_id)
+            upload_success = upload_to_azure_blob("./", run_id)  # Model path'i . olarak değiştir (local artifacts)
             
             if upload_success:
                 log.info("✅ Model uploaded to Azure!")
@@ -197,7 +216,7 @@ def train_model():
                 f.write(run_id)
             log.info("✅ Run ID saved to latest_run_id.txt")
             
-            # Upload run_id pointer to Azure
+            # Upload run_id pointer to Azure (aynı)
             try:
                 from azure.storage.blob import BlobClient
                 from azure.core.credentials import AzureNamedKeyCredential
