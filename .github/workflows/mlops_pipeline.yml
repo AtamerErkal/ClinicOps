@@ -1,4 +1,4 @@
-# .github/workflows/mlops_pipeline.yml - Güncellenmiş (Train Job'una az login Eklendi)
+# .github/workflows/mlops_pipeline.yml - AML Entegrasyonu (Syntax Fixed)
 
 name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
@@ -20,7 +20,7 @@ jobs:
       MLFLOW_RUN_ID: ${{ steps.train_model.outputs.MLFLOW_RUN_ID }} 
     
     steps:
-      - name: 0.5. Azure Login for AML (YENİ: Train için Auth)
+      - name: 0.5. Azure Login for AML (NEW: Train Auth)
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}  # Service Principal
