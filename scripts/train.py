@@ -43,7 +43,7 @@ else:
 
 log.info("✅ Artifacts will be manually uploaded to Azure")
 
-# --- FEATURE LISTS --- (aynı)
+# --- FEATURE LISTS ---
 NUMERIC_FEATURES = [
     'hematocrit', 'neutrophils', 'sodium', 'glucose', 
     'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration'
@@ -67,7 +67,7 @@ def load_data(file_path='data/processed/train.csv'):
         return None
 
 def upload_to_azure_blob(local_dir, run_id):
-    """Upload model artifacts to Azure Blob Storage""" (mevcut kod aynı)
+    """Upload model artifacts to Azure Blob Storage"""
     try:
         from azure.storage.blob import ContainerClient
         from azure.core.credentials import AzureNamedKeyCredential
@@ -91,12 +91,14 @@ def upload_to_azure_blob(local_dir, run_id):
             credential=credential
         )
         
+        # Upload all files in the model directory
         uploaded_count = 0
         for root, dirs, files in os.walk(local_dir):
             for file in files:
                 local_path = os.path.join(root, file)
                 relative_path = os.path.relpath(local_path, local_dir)
                 
+                # Create blob path: mlruns/{run_id}/artifacts/model/{relative_path}
                 blob_name = f"mlruns/{run_id}/artifacts/model/{relative_path}"
                 
                 with open(local_path, 'rb') as data:
@@ -116,7 +118,7 @@ def train_model():
     if df is None:
         return
 
-    # Schema Validation (aynı)
+    # Schema Validation
     all_expected_features = set(NUMERIC_FEATURES + CATEGORICAL_FEATURES)
     loaded_features = set(df.drop(columns=[TARGET_COLUMN], errors='ignore').columns.tolist())
     missing_cols = list(all_expected_features - loaded_features)
@@ -130,7 +132,7 @@ def train_model():
     X = df.drop(columns=[TARGET_COLUMN])
     y = df[TARGET_COLUMN]
 
-    # Build pipeline (aynı)
+    # Build pipeline
     numeric_transformer = Pipeline(steps=[('scaler', StandardScaler())])
     categorical_transformer = Pipeline(steps=[('onehot', OneHotEncoder(handle_unknown='ignore'))])
     
@@ -172,7 +174,7 @@ def train_model():
             log.info(f"RUN_ID: {run_id}")
             log.info(f"Local path: {local_model_path}")
             
-            # YENİ: Model'i AML Registry'ye Register Et (AML backend ile)
+            # Model'i AML Registry'ye Register Et (AML backend ile)
             model_name = "length_of_stay_model"
             model_uri = f"runs:/{run_id}/model"
             try:
@@ -190,12 +192,12 @@ def train_model():
             else:
                 log.warning("⚠️ Model saved locally but Azure upload failed")
             
-            # Save run_id (aynı)
+            # Save run_id
             with open("latest_run_id.txt", "w") as f:
                 f.write(run_id)
             log.info("✅ Run ID saved to latest_run_id.txt")
             
-            # Upload run_id pointer to Azure (aynı)
+            # Upload run_id pointer to Azure
             try:
                 from azure.storage.blob import BlobClient
                 from azure.core.credentials import AzureNamedKeyCredential

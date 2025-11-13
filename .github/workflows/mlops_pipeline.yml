@@ -1,4 +1,4 @@
-# .github/workflows/mlops_pipeline.yml - Güncellenmiş Versiyon (Step 7'ye Env Eklendi)
+# .github/workflows/mlops_pipeline.yml - AML Entegrasyonu
 
 name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
@@ -71,8 +71,10 @@ jobs:
         run: |
           echo "Starting Data Processing and Model Training..."
           python scripts/data_processing.py
+          
           RUN_ID=$(python scripts/train.py) 
-          echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
+          
+          echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
       # --- CRITICAL FIX: Correct container name 'clinicops-dvc' ---
       - name: 8. Upload latest_run_id.txt to Blob Storage (Pseudo Registry Pointer)
