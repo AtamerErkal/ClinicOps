@@ -1,4 +1,4 @@
-# .github/workflows/mlops_pipeline.yml - AML Entegrasyonu
+# .github/workflows/mlops_pipeline.yml - Güncellenmiş (Train Job'una az login Eklendi)
 
 name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
@@ -20,6 +20,11 @@ jobs:
       MLFLOW_RUN_ID: ${{ steps.train_model.outputs.MLFLOW_RUN_ID }} 
     
     steps:
+      - name: 0.5. Azure Login for AML (YENİ: Train için Auth)
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}  # Service Principal
+
       - name: 1. Checkout Repository and History
         uses: actions/checkout@v4
         with:
@@ -36,7 +41,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install 'dvc[azure]'
-          pip install azureml-mlflow
+          pip install azureml-mlflow  # Registry için
 
       - name: 4. Run Pytest
         env:
@@ -66,7 +71,7 @@ jobs:
           PYTHONPATH: .
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-          AML_TRACKING_URI: ${{ secrets.AML_TRACKING_URI }}  # YENİ: AML Secrets
+          AML_TRACKING_URI: ${{ secrets.AML_TRACKING_URI }}
           AML_RESOURCE_GROUP: ${{ secrets.AML_RESOURCE_GROUP }}
           AML_WORKSPACE_NAME: ${{ secrets.AML_WORKSPACE_NAME }}
         run: |
@@ -163,6 +168,6 @@ jobs:
             --environment-variables \
               AZURE_STORAGE_ACCOUNT="${{ secrets.AZURE_STORAGE_ACCOUNT }}" \
               AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
-              AML_TRACKING_URI="${{ secrets.AML_TRACKING_URI }}"  # YENİ: ACI'ye AML URI
+              AML_TRACKING_URI="${{ secrets.AML_TRACKING_URI }}" \
               
           echo "ACI Deployment with CLI initiated."
