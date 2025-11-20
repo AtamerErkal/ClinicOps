@@ -44,22 +44,27 @@ jobs:
 
       # --- DVC PULL DATA ---
 
+
+      # --- DVC PULL DATA ---
       - name: DVC Pull Data
         env:
           AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
           echo "Configuring DVC remote..."
-          # DVC URL format: azure://CONTAINER_NAME/PATH
+          
+          # Create DVC remote
           dvc remote add -d myremote azure://${{ env.CONTAINER_NAME }}/data || true
           dvc remote modify myremote account_name $AZURE_STORAGE_ACCOUNT
-          dvc remote modify myremote account_key $AZURE_STORAGE_KEY
+          
+          # CRITICAL: Don't set account_key in config - use environment variable
+          # DVC will automatically use AZURE_STORAGE_KEY from environment
           
           echo "Attempting DVC pull..."
           dvc pull -v
           
-          echo "Data directory check:"
-          ls -l data/raw/
+          echo "✅ Data directory check:"
+          ls -lh data/raw/
 
       # --- TRAIN MODEL ---
       - name: Run Data Processing and Train Model
