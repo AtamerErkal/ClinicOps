@@ -130,43 +130,48 @@ jobs:
           context: .
           push: true
           tags: ${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
-          
+
       - name: 6. Deploy to Azure Container Instances (ACI) via Azure CLI
         env: # Setting deployment-specific env vars
-          RG_NAME: ${{ env.RG_NAME }}
-          STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-        run: |
-          SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-8)
-          
-          ACI_NAME="clinicops-api-$SHA_SHORT-DEBUG"
-          IMAGE_NAME="${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}"
-
-          
-          # CRITICAL: Create the CONNECTION_STRING using the account name and key for ACI
-          CONN_STRING="DefaultEndpointsProtocol=https;AccountName=${{ env.STORAGE_ACCOUNT }};AccountKey=${{ secrets.AZURE_STORAGE_KEY }};EndpointSuffix=core.windows.net"
-
-          echo "Deploying ACI DEBUG container..."
-          
-          az container create \
-            --resource-group ${{ env.RG_NAME }} \
-            --name $ACI_NAME \
-            --image $IMAGE_NAME \
-            --location GermanyWestCentral \
-            --dns-name-label $ACI_NAME \
-            --registry-login-server ${{ secrets.AZURE_CR_LOGIN_SERVER }} \
-            --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
-            --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
-            --ports 80 \
-            --cpu 1 \
-            --memory 1.5 \
-            --protocol TCP \
-            --os-type Linux \
-            --restart-policy Never \
-            --environment-variables \
-              AZURE_STORAGE_ACCOUNT="${{ env.STORAGE_ACCOUNT }}" \
-              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
-              AZURE_STORAGE_CONNECTION_STRING="$CONN_STRING" \
-            --command-line "/bin/sh -c 'env | grep AZURE; echo \"--STARTING API--\"; python app/api.py; sleep 60'" # <-- Yeni, kritik komut
-          
-          echo "ACI DEBUG Deployment with CLI initiated."
+            RG_NAME: ${{ env.RG_NAME }}
+            STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+            AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          run: |
+            # KRİTİK DÜZELTME: CI ortamının değişkenleri kaybetmesini önlemek için 
+            # STORAGE_ACCOUNT'u manuel olarak tanımlıyoruz. (Önceki konuşmalarda verdiğiniz ad)
+            STORAGE_ACCOUNT_NAME="clinicopsdvcstorage2025" 
+            
+            # FIX 1: Konteyner adını 63 karakterin altına indirmek ve regex'e tam uymak için kısaltıyoruz.
+            SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-8)
+            
+            ACI_NAME="ci-api-$SHA_SHORT-dbg" # Örn: ci-api-7d5d4c10-dbg (Çok daha kısa)
+            IMAGE_NAME="${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}"
+            
+            # FIX 2: Bağlantı dizesini doğru Hesap Adı ile oluşturuyoruz.
+            CONN_STRING="DefaultEndpointsProtocol=https;AccountName=$STORAGE_ACCOUNT_NAME;AccountKey=${{ secrets.AZURE_STORAGE_KEY }};EndpointSuffix=core.windows.net"
+  
+            echo "Deploying ACI DEBUG container..."
+            
+            # restart-policy: Never, logları daha rahat yakalamak için hala DEVREDE.
+            az container create \
+              --resource-group ${{ env.RG_NAME }} \
+              --name $ACI_NAME \
+              --image $IMAGE_NAME \
+              --location GermanyWestCentral \
+              --dns-name-label $ACI_NAME \
+              --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
+              --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
+              --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
+              --ports 80 \
+              --cpu 1 \
+              --memory 1.5 \
+              --protocol TCP \
+              --os-type Linux \
+              --restart-policy Never \
+              --environment-variables \
+                AZURE_STORAGE_ACCOUNT="$STORAGE_ACCOUNT_NAME" \
+                AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
+                AZURE_STORAGE_CONNECTION_STRING="$CONN_STRING" \
+              --command-line "/bin/sh -c 'env | grep AZURE; echo \"--STARTING API--\"; python app/api.py; sleep 60'" 
+            
+            echo "ACI DEBUG Deployment with CLI initiated."
