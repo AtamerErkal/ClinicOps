@@ -137,8 +137,11 @@ jobs:
           STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
-          ACI_NAME="clinicops-api-${{ github.sha }}-DEBUG" # DEBUG adını ekledik
+          SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-8)
+          
+          ACI_NAME="clinicops-api-$SHA_SHORT-DEBUG"
           IMAGE_NAME="${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}"
+
           
           # CRITICAL: Create the CONNECTION_STRING using the account name and key for ACI
           CONN_STRING="DefaultEndpointsProtocol=https;AccountName=${{ env.STORAGE_ACCOUNT }};AccountKey=${{ secrets.AZURE_STORAGE_KEY }};EndpointSuffix=core.windows.net"
