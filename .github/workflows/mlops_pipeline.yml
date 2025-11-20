@@ -136,7 +136,7 @@ jobs:
             RG_NAME: ${{ env.RG_NAME }}
             STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
             AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-          run: |
+        run: |
             # KRİTİK DÜZELTME: CI ortamının değişkenleri kaybetmesini önlemek için 
             # STORAGE_ACCOUNT'u manuel olarak tanımlıyoruz. (Önceki konuşmalarda verdiğiniz ad)
             STORAGE_ACCOUNT_NAME="clinicopsdvcstorage2025" 
