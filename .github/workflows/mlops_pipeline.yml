@@ -42,16 +42,15 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # --- DVC PULL (FIXED) ---
+      # --- DVC PULL DATA ---
       - name: DVC Pull Data
         env:
-          # DVC will automatically detect and use these env vars for authentication
+          # DVC, kimlik doğrulamasını otomatik olarak AZURE_STORAGE_KEY'den alır.
           AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }} 
           AZURE_CONTAINER: ${{ env.CONTAINER_NAME }}
         run: |
           echo "Configuring DVC remote..."
-          # Only set the URL. Auth is handled by the environment variables above.
           dvc remote add -d myremote azure://$AZURE_STORAGE_ACCOUNT/$AZURE_CONTAINER
           
           echo "Attempting DVC pull..."
@@ -64,17 +63,15 @@ jobs:
         env:
           PYTHONPATH: .
         run: |
-          echo "Starting Data Processing..."
           python scripts/data_processing.py
           
-          echo "Starting Training..."
-          # train.py uses local tracking and returns a Run ID
+          # train.py yerel izleme yapar ve Run ID döndürür
           RUN_ID=$(python scripts/train.py) 
           
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
       # --- UPLOAD ARTIFACTS ---
-      - name: Upload MLflow Artifacts to Azure Blob
+      - name: Upload MLflow Artifacts and Pointer to Azure
         env:
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
@@ -82,7 +79,7 @@ jobs:
           
           echo "Uploading artifacts for Run ID: $RUN_ID"
           
-          # Upload local mlruns folder to Azure Blob
+          # 1. MLflow dosyalarını yükle (mlruns klasörü)
           az storage blob upload-batch \
             --source mlruns \
             --destination mlruns \
@@ -91,13 +88,7 @@ jobs:
             --account-key $AZURE_STORAGE_KEY \
             --overwrite
             
-          echo "✅ Artifacts uploaded."
-
-      - name: Upload Pointer File
-        env:
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-        run: |
-          # Upload the latest_run_id.txt so API knows which model to load
+          # 2. Pointer dosyasını yükle (API bunu okuyacak)
           az storage blob upload \
             --container-name $CONTAINER_NAME \
             --account-name $STORAGE_ACCOUNT \
@@ -106,7 +97,7 @@ jobs:
             --name latest_model_run.txt \
             --overwrite
             
-          echo "✅ Pointer file uploaded."
+          echo "✅ Artifacts and Pointer file uploaded."
 
   deploy-api-to-aci:
     needs: full-mlops-workflow
@@ -137,7 +128,6 @@ jobs:
           
       - name: Deploy ACI
         env:
-          # Explicitly map secrets to env vars for this step
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
           RG_NAME: ${{ env.RG_NAME }}
           STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
@@ -149,11 +139,9 @@ jobs:
           ACI_NAME="ci-api-$SHA_SHORT" 
           IMAGE_NAME="$ACR_LOGIN_SERVER/klinikops-model:${{ github.sha }}"
           
-          # Construct connection string for the API container
+          # Container'ın MLflow'a erişmesi için Connection String oluşturulur.
           CONN_STRING="DefaultEndpointsProtocol=https;AccountName=$STORAGE_ACCOUNT;AccountKey=$AZURE_STORAGE_KEY;EndpointSuffix=core.windows.net"
 
-          echo "Deploying ACI..."
-          
           az container create \
             --resource-group $RG_NAME \
             --name $ACI_NAME \
@@ -166,9 +154,6 @@ jobs:
             --ports 80 \
             --cpu 1 \
             --memory 1.5 \
-            --protocol TCP \
-            --os-type Linux \
-            --restart-policy Always \
             --environment-variables \
               AZURE_STORAGE_ACCOUNT="$STORAGE_ACCOUNT" \
               AZURE_STORAGE_KEY="$AZURE_STORAGE_KEY" \
@@ -182,6 +167,5 @@ jobs:
             --query ipAddress.ip -o tsv)
           
           echo "=========================================="
-          echo "🎉 Deployment Complete!"
           echo "Health Check: http://${CONTAINER_IP}/health"
           echo "=========================================="

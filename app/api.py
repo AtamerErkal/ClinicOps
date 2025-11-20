@@ -11,13 +11,13 @@ from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 
-# Env Vars
+# Env Vars (ACI'dan gelenler)
 AZURE_ACCOUNT = os.getenv("AZURE_STORAGE_ACCOUNT") 
 AZURE_KEY = os.getenv("AZURE_STORAGE_KEY") 
 AZURE_CONN_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = "clinicops-dvc" 
 
-# Auth Configuration
+# Set authentication for MLflow
 if AZURE_CONN_STRING:
     os.environ['AZURE_STORAGE_CONNECTION_STRING'] = AZURE_CONN_STRING
 elif AZURE_KEY:
@@ -25,10 +25,16 @@ elif AZURE_KEY:
     os.environ['AZURE_STORAGE_ACCESS_KEY'] = AZURE_KEY
 
 model = None
+MODEL_URI = None
 
 def get_latest_run_id():
-    """Downloads latest_model_run.txt from Azure."""
+    """Downloads the latest_model_run.txt file from Azure Blob"""
+    if not AZURE_ACCOUNT or not (AZURE_KEY or AZURE_CONN_STRING):
+        logging.error("❌ Azure credentials missing")
+        return None
+
     try:
+        # Blob Client using Connection String or Account Key
         if AZURE_CONN_STRING:
             blob_client = BlobClient.from_connection_string(
                 conn_str=AZURE_CONN_STRING,
@@ -50,32 +56,25 @@ def get_latest_run_id():
         return None
 
 def load_model():
-    global model
+    global model, MODEL_URI
     run_id = get_latest_run_id()
     
     if not run_id:
         logging.error("No Run ID found.")
         return
 
-    # Direct path to artifacts in Azure Blob
-    # Format: mlruns/0/<run_id>/artifacts/model
+    # WASBS URI (Model yolu)
     model_uri = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/0/{run_id}/artifacts/model"
+    MODEL_URI = model_uri
     
     logging.info(f"Loading from: {model_uri}")
     try:
         model = mlflow.pyfunc.load_model(model_uri)
         logging.info("✅ Model loaded successfully!")
-    except Exception:
-        # Fallback if Experiment ID is missing from path
-        try:
-            alt_uri = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/artifacts/model"
-            logging.info(f"Retrying with: {alt_uri}")
-            model = mlflow.pyfunc.load_model(alt_uri)
-            logging.info("✅ Model loaded (Fallback)!")
-        except Exception as e:
-            logging.error(f"❌ Load failed: {e}")
+    except Exception as e:
+        logging.error(f"❌ Load failed: {e}")
 
-app = FastAPI()
+app = FastAPI(version="1.0.0")
 load_model()
 
 # --- Schema ---
@@ -106,16 +105,16 @@ class PatientData(BaseModel):
     discharged: str
     facid: str
 
-@app.post("/predict")
+@app.post("/predict", tags=["Prediction"])
 def predict(data: PatientData):
-    if not model: raise HTTPException(503, "Model not loaded")
+    if model is None: raise HTTPException(503, "Model not loaded")
     try:
-        if hasattr(data, 'model_dump'): df = pd.DataFrame([data.model_dump()])
-        else: df = pd.DataFrame([data.dict()])
-        return {"prediction": float(model.predict(df)[0])}
+        input_df = pd.DataFrame([data.model_dump()])
+        prediction = model.predict(input_df)
+        return {"predicted_length_of_stay": round(float(prediction[0]), 2)}
     except Exception as e:
-        raise HTTPException(500, str(e))
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
-@app.get("/health")
+@app.get("/health", tags=["Check"])
 def health():
-    return {"status": "ok", "model_loaded": model is not None}
+    return {"status": "ok", "model_loaded": model is not None, "model_uri": MODEL_URI}
