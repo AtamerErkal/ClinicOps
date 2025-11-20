@@ -17,7 +17,7 @@ AZURE_KEY = os.getenv("AZURE_STORAGE_KEY")
 AZURE_CONN_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = "clinicops-dvc" 
 
-# Kimlik Doğrulama Ayarı
+# Auth Configuration
 if AZURE_CONN_STRING:
     os.environ['AZURE_STORAGE_CONNECTION_STRING'] = AZURE_CONN_STRING
 elif AZURE_KEY:
@@ -27,7 +27,7 @@ elif AZURE_KEY:
 model = None
 
 def get_latest_run_id():
-    """Azure'dan en son Run ID'yi indirir."""
+    """Downloads latest_model_run.txt from Azure."""
     try:
         if AZURE_CONN_STRING:
             blob_client = BlobClient.from_connection_string(
@@ -44,7 +44,6 @@ def get_latest_run_id():
             )
 
         run_id = blob_client.download_blob().readall().decode("utf-8").strip()
-        logging.info(f"✅ Found Run ID: {run_id}")
         return run_id
     except Exception as e:
         logging.error(f"Failed to download pointer: {e}")
@@ -55,34 +54,31 @@ def load_model():
     run_id = get_latest_run_id()
     
     if not run_id:
-        logging.error("❌ No Run ID found.")
+        logging.error("No Run ID found.")
         return
 
-    # WASBS Yolu (Direkt Artefakt Erişimi)
-    # Standart yol: mlruns/0/<run_id>/artifacts/model
+    # Direct path to artifacts in Azure Blob
+    # Format: mlruns/0/<run_id>/artifacts/model
     model_uri = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/0/{run_id}/artifacts/model"
     
-    logging.info(f"⏳ Loading from: {model_uri}")
+    logging.info(f"Loading from: {model_uri}")
     try:
         model = mlflow.pyfunc.load_model(model_uri)
         logging.info("✅ Model loaded successfully!")
-    except Exception as e:
-        logging.error(f"❌ Load failed: {e}")
-        # Alternatif yol (Experiment ID olmadan)
+    except Exception:
+        # Fallback if Experiment ID is missing from path
         try:
             alt_uri = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/{run_id}/artifacts/model"
             logging.info(f"Retrying with: {alt_uri}")
             model = mlflow.pyfunc.load_model(alt_uri)
             logging.info("✅ Model loaded (Fallback)!")
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"❌ Load failed: {e}")
 
 app = FastAPI()
-
-# Başlangıçta Yükle
 load_model()
 
-# --- Şema ---
+# --- Schema ---
 class PatientData(BaseModel):
     hematocrit: float
     neutrophils: float
