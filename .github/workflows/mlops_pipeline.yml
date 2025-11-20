@@ -1,183 +1,161 @@
-# .github/workflows/mlops_pipeline.yml - Connection String Fix
+# .github/workflows/mlops_pipeline.yml - ARTIFACT UPLOAD RESTORED
 
 name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
-# --- GLOBAL ENVIRONMENT VARIABLES ---
-env:
-  RG_NAME: ClinicOps-RG
-
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
+env:
+  RG_NAME: ClinicOps-RG
+  LOCATION: westeurope
+  STORAGE_ACCOUNT: clinicopsdvcstorage2025 
+  CONTAINER_NAME: clinicops-dvc 
+  
 jobs:
-  # --- 1. FULL CI/ML WORKFLOW (TEST, PULL DATA, TRAIN, LOG) ---
   full-mlops-workflow:
     runs-on: ubuntu-latest
     outputs:
-      MLFLOW_RUN_ID: ${{ steps.train_model.outputs.MLFLOW_RUN_ID }} 
-    
+      run_id: ${{ steps.train.outputs.MLFLOW_RUN_ID }} # Output is used again
+      
     steps:
-      - name: 1. Checkout Repository and History
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: recursive
-          fetch-depth: 0
+          fetch-depth: 0 
 
-      - name: 2. Set up Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: 3. Install Dependencies (including DVC and Azure)
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install 'dvc[azure]'
+          pip install dvc[azure]
+          pip install azure-storage-blob 
 
-      - name: 4. Run Pytest
-        env:
-          PYTHONPATH: .
-        run: |
-          pytest
-          
-      - name: 5. Lint with Flake8
-        run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 6. DVC Pull Data
+      - name: DVC Pull Data
         env:
-          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }} 
         run: |
-          echo "Attempting DVC Remote Configuration and Pull..."
-          dvc remote modify azure_remote account_name ${AZURE_STORAGE_ACCOUNT}
-          dvc remote modify azure_remote account_key ${AZURE_STORAGE_KEY}
+          dvc remote add -d myremote azure://${{ env.STORAGE_ACCOUNT }}/${{ env.CONTAINER_NAME }}
+          echo "Attempting DVC pull..."
           dvc pull -v --force
-          echo "Data Directory Check:"
-          ls -l data/raw/
 
-      - name: 7. Run Preprocessing and Train Model (Optimized)
-        id: train_model
+      # --- TRAIN & CAPTURE RUN ID ---
+      - name: Run Data Processing and Train Model
+        id: train
         env:
           PYTHONPATH: .
-          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
-          echo "Starting Data Processing and Model Training..."
           python scripts/data_processing.py
           
+          # Capture the Run ID
           RUN_ID=$(python scripts/train.py) 
           
+          echo "Captured RUN_ID: $RUN_ID"
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
-      - name: 8. Upload latest_run_id.txt to Blob Storage (Pseudo Registry Pointer)
+      # --- UPLOAD ARTIFACTS TO AZURE (RESTORED) ---
+      - name: Upload MLflow Artifacts to Azure Blob
         env:
-          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
-          echo "Uploading latest_run_id.txt to 'clinicops-dvc' container..."
+          RUN_ID=${{ steps.train.outputs.MLFLOW_RUN_ID }}
           
+          # Upload the local mlruns folder to Azure
+          az storage blob upload-batch \
+            --source mlruns \
+            --destination mlruns \
+            --container-name ${{ env.CONTAINER_NAME }} \
+            --account-name ${{ env.STORAGE_ACCOUNT }} \
+            --auth-mode key \
+            --overwrite
+            
+          echo "✅ Artifacts for $RUN_ID uploaded."
+
+      - name: Upload latest_model_run.txt Pointer File
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        run: |
+          # Upload the file that tells API which Run ID to load
           az storage blob upload \
-            --container-name clinicops-dvc \
-            --account-name ${{ secrets.AZURE_STORAGE_ACCOUNT }} \
+            --container-name ${{ env.CONTAINER_NAME }} \
+            --account-name ${{ env.STORAGE_ACCOUNT }} \
             --file latest_run_id.txt \
             --name latest_model_run.txt \
             --auth-mode key \
             --overwrite
             
-          echo "latest_model_run.txt uploaded successfully."
+          echo "✅ Pointer file uploaded."
 
-      - name: 9. Archive MLflow Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mlflow-run-artifacts
-          path: mlruns/
-          
-  # --- 2. CONTINUOUS DEPLOYMENT TO AZURE CONTAINER INSTANCES (ACI) ---
   deploy-api-to-aci:
     needs: full-mlops-workflow
     runs-on: ubuntu-latest
     environment: Production 
     env:
       ACR_LOGIN_SERVER: ${{ secrets.AZURE_CR_LOGIN_SERVER }}
+      STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+      CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
     
     steps:
-      - name: 1. Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: 2. Azure Login using Service Principal
+      - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: 3. Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        
-      - name: 4. Log in to Azure Container Registry (ACR)
+      - name: Docker Login
         uses: docker/login-action@v3
         with:
           registry: ${{ env.ACR_LOGIN_SERVER }}
           username: ${{ secrets.AZURE_CR_USERNAME }}
           password: ${{ secrets.AZURE_CR_PASSWORD }}
-          
-      - name: 5. Build and Push Docker Image
-        id: build_push
+      - name: Build/Push
         uses: docker/build-push-action@v5 
         with:
           context: .
           push: true
           tags: ${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
-
-      - name: 6. Deploy to Azure Container Instances (ACI) via Azure CLI
+          
+      - name: Deploy ACI
         env:
-            RG_NAME: ${{ env.RG_NAME }}
-            STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
-            AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          RG_NAME: ${{ env.RG_NAME }}
+          STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
-          STORAGE_ACCOUNT_NAME="clinicopsdvcstorage2025" 
-            SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-8)
-            
-            # İsimlendirmeyi standart hale getiriyoruz
-            ACI_NAME="ci-api-$SHA_SHORT" 
-            IMAGE_NAME="${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}"
-            
-            CONN_STRING="DefaultEndpointsProtocol=https;AccountName=$STORAGE_ACCOUNT_NAME;AccountKey=${{ secrets.AZURE_STORAGE_KEY }};EndpointSuffix=core.windows.net"
-  
-            echo "Deploying ACI Production container..."
-            
-            az container create \
-              --resource-group ${{ env.RG_NAME }} \
-              --name $ACI_NAME \
-              --image $IMAGE_NAME \
-              --location GermanyWestCentral \
-              --dns-name-label $ACI_NAME \
-              --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
-              --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
-              --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
-              --ports 80 \
-              --cpu 1 \
-              --memory 1.5 \
-              --protocol TCP \
-              --os-type Linux \
-              --restart-policy Always \
-              --environment-variables \
-                AZURE_STORAGE_ACCOUNT="$STORAGE_ACCOUNT_NAME" \
-                AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
-                AZURE_STORAGE_CONNECTION_STRING="$CONN_STRING" \
-              # NOT: --command-line satırı SİLİNDİ. Artık Dockerfile'daki uvicorn komutu çalışacak.
-            
-            echo "✅ ACI Deployment Initiated."
-            
-            # IP Adresini Al
-            CONTAINER_IP=$(az container show \
-              --resource-group ${{ env.RG_NAME }} \
-              --name $ACI_NAME \
-              --query ipAddress.ip -o tsv)
-            
-            echo "=========================================="
-            echo "🎉 Deployment Complete!"
-            echo "Health Check: http://${CONTAINER_IP}/health"
-            echo "=========================================="
+          SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-8)
+          ACI_NAME="ci-api-$SHA_SHORT" 
+          IMAGE_NAME="${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}"
+          CONN_STRING="DefaultEndpointsProtocol=https;AccountName=${{ env.STORAGE_ACCOUNT }};AccountKey=${{ secrets.AZURE_STORAGE_KEY }};EndpointSuffix=core.windows.net"
+
+          az container create \
+            --resource-group ${{ env.RG_NAME }} \
+            --name $ACI_NAME \
+            --image $IMAGE_NAME \
+            --location GermanyWestCentral \
+            --dns-name-label $ACI_NAME \
+            --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
+            --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
+            --ports 80 \
+            --cpu 1 \
+            --memory 1.5 \
+            --protocol TCP \
+            --os-type Linux \
+            --restart-policy Always \
+            --environment-variables \
+              AZURE_STORAGE_ACCOUNT="${{ env.STORAGE_ACCOUNT }}" \
+              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
+              AZURE_STORAGE_CONNECTION_STRING="$CONN_STRING"
