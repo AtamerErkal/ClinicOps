@@ -1,4 +1,4 @@
-# scripts/train.py - LOCAL TRACKING VERSION
+# scripts/train.py - LOCAL TRACKING (Pointer File Method)
 
 import mlflow
 import mlflow.sklearn
@@ -10,16 +10,12 @@ from sklearn.compose import ColumnTransformer
 import logging
 import os
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# --- Configuration ---
-# We use LOCAL tracking. The CI/CD pipeline will handle the upload to Azure.
+# Configure MLflow to Local (Pipeline handles upload)
 mlflow.set_tracking_uri("file:./mlruns")
-log.info("✅ MLflow Tracking set to LOCAL: file:./mlruns")
 
-# --- FEATURE LISTS ---
 NUMERIC_FEATURES = [
     'hematocrit', 'neutrophils', 'sodium', 'glucose', 
     'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration'
@@ -34,10 +30,9 @@ TARGET_COLUMN = 'lengthofstay'
 
 def load_data(file_path='data/processed/train.csv'):
     try:
-        df = pd.read_csv(file_path)
-        return df
+        return pd.read_csv(file_path)
     except Exception as e:
-        log.error(f"❌ Error loading data: {e}")
+        log.error(f"Error: {e}")
         return None
 
 def train_model():
@@ -47,7 +42,6 @@ def train_model():
     X = df.drop(columns=[TARGET_COLUMN])
     y = df[TARGET_COLUMN]
 
-    # Pipeline
     numeric_transformer = Pipeline(steps=[('scaler', StandardScaler())])
     categorical_transformer = Pipeline(steps=[('onehot', OneHotEncoder(handle_unknown='ignore'))])
     
@@ -64,31 +58,23 @@ def train_model():
         ('regressor', LinearRegression())
     ]) 
 
-    try:
-        # Set experiment
-        mlflow.set_experiment("clinicops-length-of-stay")
+    mlflow.set_experiment("clinicops-length-of-stay")
+    
+    with mlflow.start_run() as run:
+        log.info("Training model...")
+        sk_pipeline.fit(X, y)
         
-        with mlflow.start_run() as run:
-            log.info("🔄 Starting training...")
-            sk_pipeline.fit(X, y)
-            log.info("✅ Training complete")
-
-            # Log model locally
-            mlflow.sklearn.log_model(sk_pipeline, "model")
+        # Log model locally
+        mlflow.sklearn.log_model(sk_pipeline, "model")
+        
+        run_id = run.info.run_id
+        
+        # Save Run ID for pipeline
+        with open("latest_run_id.txt", "w") as f:
+            f.write(run_id)
             
-            # Save Run ID to a file for the CI/CD pipeline to use
-            run_id = run.info.run_id
-            with open("latest_run_id.txt", "w") as f:
-                f.write(run_id)
-                
-            log.info(f"✅ Model saved locally. RUN_ID: {run_id}")
-            
-            # CRITICAL: Print RUN_ID so GitHub Actions can capture it
-            print(run_id)
-
-    except Exception as e:
-        log.error(f"❌ Training error: {e}")
-        raise 
+        log.info(f"✅ Model saved locally. RUN_ID: {run_id}")
+        print(run_id) # Required for GitHub Actions capture
 
 if __name__ == "__main__":
     train_model()

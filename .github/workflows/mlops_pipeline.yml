@@ -1,4 +1,4 @@
-# .github/workflows/mlops_pipeline.yml - ARTIFACT UPLOAD RESTORED
+# .github/workflows/mlops_pipeline.yml - SYNTAX ERROR FIXED
 
 name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
@@ -7,6 +7,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# Global environment variables are exported to the shell automatically
 env:
   RG_NAME: ClinicOps-RG
   LOCATION: westeurope
@@ -17,7 +18,7 @@ jobs:
   full-mlops-workflow:
     runs-on: ubuntu-latest
     outputs:
-      run_id: ${{ steps.train.outputs.MLFLOW_RUN_ID }} # Output is used again
+      run_id: ${{ steps.train.outputs.MLFLOW_RUN_ID }}
       
     steps:
       - name: Checkout code
@@ -42,60 +43,68 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      # --- DVC PULL ---
       - name: DVC Pull Data
-        env:
-          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }} 
+        # FIX: We don't need to map env vars here. DVC reads $STORAGE_ACCOUNT if needed, 
+        # but we use 'dvc remote modify' with the secret explicitly.
         run: |
-          dvc remote add -d myremote azure://${{ env.STORAGE_ACCOUNT }}/${{ env.CONTAINER_NAME }}
+          echo "Configuring DVC remote..."
+          dvc remote add -d myremote azure://$STORAGE_ACCOUNT/$CONTAINER_NAME
+          
+          # Explicitly set the key for authentication
+          dvc remote modify myremote azure_storage_key ${{ secrets.AZURE_STORAGE_KEY }}
+          
           echo "Attempting DVC pull..."
           dvc pull -v --force
+          ls -l data/raw/
 
-      # --- TRAIN & CAPTURE RUN ID ---
+      # --- TRAIN MODEL ---
       - name: Run Data Processing and Train Model
         id: train
         env:
           PYTHONPATH: .
+          # Export secret key for Python scripts
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
+          # Global env vars like STORAGE_ACCOUNT are available as shell vars
+          export AZURE_STORAGE_ACCOUNT=$STORAGE_ACCOUNT
+          
+          echo "Starting Data Processing..."
           python scripts/data_processing.py
           
-          # Capture the Run ID
+          echo "Starting Training..."
           RUN_ID=$(python scripts/train.py) 
           
-          echo "Captured RUN_ID: $RUN_ID"
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
-      # --- UPLOAD ARTIFACTS TO AZURE (RESTORED) ---
+      # --- UPLOAD ARTIFACTS (FIXED SYNTAX) ---
       - name: Upload MLflow Artifacts to Azure Blob
         env:
-          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
           RUN_ID=${{ steps.train.outputs.MLFLOW_RUN_ID }}
           
-          # Upload the local mlruns folder to Azure
+          # FIX: Use shell variables ($STORAGE_ACCOUNT) instead of ${{ env... }} to avoid YAML parsing errors
           az storage blob upload-batch \
             --source mlruns \
             --destination mlruns \
-            --container-name ${{ env.CONTAINER_NAME }} \
-            --account-name ${{ env.STORAGE_ACCOUNT }} \
-            --auth-mode key \
+            --container-name $CONTAINER_NAME \
+            --account-name $STORAGE_ACCOUNT \
+            --account-key $AZURE_STORAGE_KEY \
             --overwrite
             
           echo "✅ Artifacts for $RUN_ID uploaded."
 
       - name: Upload latest_model_run.txt Pointer File
         env:
-          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
-          # Upload the file that tells API which Run ID to load
           az storage blob upload \
-            --container-name ${{ env.CONTAINER_NAME }} \
-            --account-name ${{ env.STORAGE_ACCOUNT }} \
+            --container-name $CONTAINER_NAME \
+            --account-name $STORAGE_ACCOUNT \
+            --account-key $AZURE_STORAGE_KEY \
             --file latest_run_id.txt \
             --name latest_model_run.txt \
-            --auth-mode key \
             --overwrite
             
           echo "✅ Pointer file uploaded."
@@ -106,8 +115,6 @@ jobs:
     environment: Production 
     env:
       ACR_LOGIN_SERVER: ${{ secrets.AZURE_CR_LOGIN_SERVER }}
-      STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
-      CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
     
     steps:
       - name: Checkout
@@ -129,24 +136,27 @@ jobs:
           push: true
           tags: ${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
           
-      - name: Deploy ACI
+      - name: Deploy ACI (FIXED SYNTAX)
         env:
-          RG_NAME: ${{ env.RG_NAME }}
-          STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
           SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-8)
           ACI_NAME="ci-api-$SHA_SHORT" 
-          IMAGE_NAME="${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}"
-          CONN_STRING="DefaultEndpointsProtocol=https;AccountName=${{ env.STORAGE_ACCOUNT }};AccountKey=${{ secrets.AZURE_STORAGE_KEY }};EndpointSuffix=core.windows.net"
+          IMAGE_NAME="$ACR_LOGIN_SERVER/klinikops-model:${{ github.sha }}"
+          
+          # Create connection string using shell variables
+          CONN_STRING="DefaultEndpointsProtocol=https;AccountName=$STORAGE_ACCOUNT;AccountKey=$AZURE_STORAGE_KEY;EndpointSuffix=core.windows.net"
 
+          echo "Deploying ACI..."
+          
+          # Pass variables explicitly to the container environment
           az container create \
-            --resource-group ${{ env.RG_NAME }} \
+            --resource-group $RG_NAME \
             --name $ACI_NAME \
             --image $IMAGE_NAME \
-            --location GermanyWestCentral \
+            --location $LOCATION \
             --dns-name-label $ACI_NAME \
-            --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-login-server $ACR_LOGIN_SERVER \
             --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
             --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
             --ports 80 \
@@ -156,6 +166,19 @@ jobs:
             --os-type Linux \
             --restart-policy Always \
             --environment-variables \
-              AZURE_STORAGE_ACCOUNT="${{ env.STORAGE_ACCOUNT }}" \
-              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
+              AZURE_STORAGE_ACCOUNT="$STORAGE_ACCOUNT" \
+              AZURE_STORAGE_KEY="$AZURE_STORAGE_KEY" \
               AZURE_STORAGE_CONNECTION_STRING="$CONN_STRING"
+          
+          echo "✅ Deployment initiated."
+          
+          # Get IP
+          CONTAINER_IP=$(az container show \
+            --resource-group $RG_NAME \
+            --name $ACI_NAME \
+            --query ipAddress.ip -o tsv)
+          
+          echo "=========================================="
+          echo "🎉 Deployment Complete!"
+          echo "Health Check: http://${CONTAINER_IP}/health"
+          echo "=========================================="
