@@ -1,4 +1,4 @@
-# .github/workflows/mlops_pipeline.yml - FINAL SYNTAX FIX
+# .github/workflows/mlops_pipeline.yml - FINAL FIXED VERSION
 
 name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
@@ -7,7 +7,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# Global değişkenler
 env:
   RG_NAME: ClinicOps-RG
   LOCATION: westeurope
@@ -43,20 +42,17 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # --- DVC PULL ---
+      # --- DVC PULL (FIXED) ---
       - name: DVC Pull Data
         env:
-          # Global env değişkenlerini yerel değişkenlere ata
+          # DVC will automatically detect and use these env vars for authentication
           AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }} 
           AZURE_CONTAINER: ${{ env.CONTAINER_NAME }}
         run: |
           echo "Configuring DVC remote..."
-          # Değişkenleri shell üzerinden kullan ($VAR_NAME)
+          # Only set the URL. Auth is handled by the environment variables above.
           dvc remote add -d myremote azure://$AZURE_STORAGE_ACCOUNT/$AZURE_CONTAINER
-          
-          # Anahtarı ayarla
-          dvc remote modify myremote azure_storage_key $AZURE_STORAGE_KEY
           
           echo "Attempting DVC pull..."
           dvc pull -v --force
@@ -67,16 +63,12 @@ jobs:
         id: train
         env:
           PYTHONPATH: .
-          # Python scriptlerinin erişmesi için gerekenler
-          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
         run: |
           echo "Starting Data Processing..."
           python scripts/data_processing.py
           
           echo "Starting Training..."
-          # train.py yerel tracking yapar ve run_id döndürür
+          # train.py uses local tracking and returns a Run ID
           RUN_ID=$(python scripts/train.py) 
           
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
@@ -84,19 +76,18 @@ jobs:
       # --- UPLOAD ARTIFACTS ---
       - name: Upload MLflow Artifacts to Azure Blob
         env:
-          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-          AZURE_CONTAINER: ${{ env.CONTAINER_NAME }}
         run: |
           RUN_ID=${{ steps.train.outputs.MLFLOW_RUN_ID }}
           
           echo "Uploading artifacts for Run ID: $RUN_ID"
           
+          # Upload local mlruns folder to Azure Blob
           az storage blob upload-batch \
             --source mlruns \
             --destination mlruns \
-            --container-name $AZURE_CONTAINER \
-            --account-name $AZURE_STORAGE_ACCOUNT \
+            --container-name $CONTAINER_NAME \
+            --account-name $STORAGE_ACCOUNT \
             --account-key $AZURE_STORAGE_KEY \
             --overwrite
             
@@ -104,13 +95,12 @@ jobs:
 
       - name: Upload Pointer File
         env:
-          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
-          AZURE_CONTAINER: ${{ env.CONTAINER_NAME }}
         run: |
+          # Upload the latest_run_id.txt so API knows which model to load
           az storage blob upload \
-            --container-name $AZURE_CONTAINER \
-            --account-name $AZURE_STORAGE_ACCOUNT \
+            --container-name $CONTAINER_NAME \
+            --account-name $STORAGE_ACCOUNT \
             --account-key $AZURE_STORAGE_KEY \
             --file latest_run_id.txt \
             --name latest_model_run.txt \
@@ -147,10 +137,10 @@ jobs:
           
       - name: Deploy ACI
         env:
-          # Bu adım için gerekli değişkenleri açıkça ata
+          # Explicitly map secrets to env vars for this step
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
           RG_NAME: ${{ env.RG_NAME }}
           STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
-          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
           ACR_LOGIN_SERVER: ${{ env.ACR_LOGIN_SERVER }}
           ACR_USERNAME: ${{ secrets.AZURE_CR_USERNAME }}
           ACR_PASSWORD: ${{ secrets.AZURE_CR_PASSWORD }}
@@ -159,7 +149,7 @@ jobs:
           ACI_NAME="ci-api-$SHA_SHORT" 
           IMAGE_NAME="$ACR_LOGIN_SERVER/klinikops-model:${{ github.sha }}"
           
-          # Connection string oluştur
+          # Construct connection string for the API container
           CONN_STRING="DefaultEndpointsProtocol=https;AccountName=$STORAGE_ACCOUNT;AccountKey=$AZURE_STORAGE_KEY;EndpointSuffix=core.windows.net"
 
           echo "Deploying ACI..."
@@ -186,7 +176,6 @@ jobs:
           
           echo "✅ Deployment initiated."
           
-          # IP Adresini Al
           CONTAINER_IP=$(az container show \
             --resource-group $RG_NAME \
             --name $ACI_NAME \
