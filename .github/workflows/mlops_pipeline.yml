@@ -1,4 +1,4 @@
-# .github/workflows/mlops_pipeline.yml - SYNTAX ERROR FIXED
+# .github/workflows/mlops_pipeline.yml - FINAL SYNTAX FIX
 
 name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# Global environment variables are exported to the shell automatically
+# Global değişkenler
 env:
   RG_NAME: ClinicOps-RG
   LOCATION: westeurope
@@ -45,14 +45,18 @@ jobs:
 
       # --- DVC PULL ---
       - name: DVC Pull Data
-        # FIX: We don't need to map env vars here. DVC reads $STORAGE_ACCOUNT if needed, 
-        # but we use 'dvc remote modify' with the secret explicitly.
+        env:
+          # Global env değişkenlerini yerel değişkenlere ata
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }} 
+          AZURE_CONTAINER: ${{ env.CONTAINER_NAME }}
         run: |
           echo "Configuring DVC remote..."
-          dvc remote add -d myremote azure://$STORAGE_ACCOUNT/$CONTAINER_NAME
+          # Değişkenleri shell üzerinden kullan ($VAR_NAME)
+          dvc remote add -d myremote azure://$AZURE_STORAGE_ACCOUNT/$AZURE_CONTAINER
           
-          # Explicitly set the key for authentication
-          dvc remote modify myremote azure_storage_key ${{ secrets.AZURE_STORAGE_KEY }}
+          # Anahtarı ayarla
+          dvc remote modify myremote azure_storage_key $AZURE_STORAGE_KEY
           
           echo "Attempting DVC pull..."
           dvc pull -v --force
@@ -63,45 +67,50 @@ jobs:
         id: train
         env:
           PYTHONPATH: .
-          # Export secret key for Python scripts
+          # Python scriptlerinin erişmesi için gerekenler
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
         run: |
-          # Global env vars like STORAGE_ACCOUNT are available as shell vars
-          export AZURE_STORAGE_ACCOUNT=$STORAGE_ACCOUNT
-          
           echo "Starting Data Processing..."
           python scripts/data_processing.py
           
           echo "Starting Training..."
+          # train.py yerel tracking yapar ve run_id döndürür
           RUN_ID=$(python scripts/train.py) 
           
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
 
-      # --- UPLOAD ARTIFACTS (FIXED SYNTAX) ---
+      # --- UPLOAD ARTIFACTS ---
       - name: Upload MLflow Artifacts to Azure Blob
         env:
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_CONTAINER: ${{ env.CONTAINER_NAME }}
         run: |
           RUN_ID=${{ steps.train.outputs.MLFLOW_RUN_ID }}
           
-          # FIX: Use shell variables ($STORAGE_ACCOUNT) instead of ${{ env... }} to avoid YAML parsing errors
+          echo "Uploading artifacts for Run ID: $RUN_ID"
+          
           az storage blob upload-batch \
             --source mlruns \
             --destination mlruns \
-            --container-name $CONTAINER_NAME \
-            --account-name $STORAGE_ACCOUNT \
+            --container-name $AZURE_CONTAINER \
+            --account-name $AZURE_STORAGE_ACCOUNT \
             --account-key $AZURE_STORAGE_KEY \
             --overwrite
             
-          echo "✅ Artifacts for $RUN_ID uploaded."
+          echo "✅ Artifacts uploaded."
 
-      - name: Upload latest_model_run.txt Pointer File
+      - name: Upload Pointer File
         env:
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_CONTAINER: ${{ env.CONTAINER_NAME }}
         run: |
           az storage blob upload \
-            --container-name $CONTAINER_NAME \
-            --account-name $STORAGE_ACCOUNT \
+            --container-name $AZURE_CONTAINER \
+            --account-name $AZURE_STORAGE_ACCOUNT \
             --account-key $AZURE_STORAGE_KEY \
             --file latest_run_id.txt \
             --name latest_model_run.txt \
@@ -136,29 +145,34 @@ jobs:
           push: true
           tags: ${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
           
-      - name: Deploy ACI (FIXED SYNTAX)
+      - name: Deploy ACI
         env:
+          # Bu adım için gerekli değişkenleri açıkça ata
+          RG_NAME: ${{ env.RG_NAME }}
+          STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          ACR_LOGIN_SERVER: ${{ env.ACR_LOGIN_SERVER }}
+          ACR_USERNAME: ${{ secrets.AZURE_CR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.AZURE_CR_PASSWORD }}
         run: |
           SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-8)
           ACI_NAME="ci-api-$SHA_SHORT" 
           IMAGE_NAME="$ACR_LOGIN_SERVER/klinikops-model:${{ github.sha }}"
           
-          # Create connection string using shell variables
+          # Connection string oluştur
           CONN_STRING="DefaultEndpointsProtocol=https;AccountName=$STORAGE_ACCOUNT;AccountKey=$AZURE_STORAGE_KEY;EndpointSuffix=core.windows.net"
 
           echo "Deploying ACI..."
           
-          # Pass variables explicitly to the container environment
           az container create \
             --resource-group $RG_NAME \
             --name $ACI_NAME \
             --image $IMAGE_NAME \
-            --location $LOCATION \
+            --location westeurope \
             --dns-name-label $ACI_NAME \
             --registry-login-server $ACR_LOGIN_SERVER \
-            --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
-            --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
+            --registry-username $ACR_USERNAME \
+            --registry-password $ACR_PASSWORD \
             --ports 80 \
             --cpu 1 \
             --memory 1.5 \
@@ -172,7 +186,7 @@ jobs:
           
           echo "✅ Deployment initiated."
           
-          # Get IP
+          # IP Adresini Al
           CONTAINER_IP=$(az container show \
             --resource-group $RG_NAME \
             --name $ACI_NAME \

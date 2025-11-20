@@ -1,4 +1,4 @@
-# scripts/train.py - LOCAL TRACKING (Pointer File Method)
+# scripts/train.py - LOCAL TRACKING
 
 import mlflow
 import mlflow.sklearn
@@ -13,7 +13,8 @@ import os
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# Configure MLflow to Local (Pipeline handles upload)
+# --- Configuration ---
+# Yerel dosya sistemine kaydet
 mlflow.set_tracking_uri("file:./mlruns")
 
 NUMERIC_FEATURES = [
@@ -64,17 +65,19 @@ def train_model():
         log.info("Training model...")
         sk_pipeline.fit(X, y)
         
-        # Log model locally
+        # Modeli yerel mlruns klasörüne kaydet
         mlflow.sklearn.log_model(sk_pipeline, "model")
         
         run_id = run.info.run_id
         
-        # Save Run ID for pipeline
+        # Run ID'yi dosyaya yaz (pipeline bunu kullanacak)
         with open("latest_run_id.txt", "w") as f:
             f.write(run_id)
             
         log.info(f"✅ Model saved locally. RUN_ID: {run_id}")
-        print(run_id) # Required for GitHub Actions capture
+        
+        # CI/CD'nin ID'yi yakalaması için yazdır
+        print(run_id)
 
 if __name__ == "__main__":
     train_model()
