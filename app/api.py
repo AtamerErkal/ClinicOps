@@ -60,19 +60,20 @@ def load_model():
     run_id = get_latest_run_id()
     
     if not run_id:
-        logging.error("No Run ID found.")
+        logging.error("❌ No Run ID found.")
         return
 
-    # WASBS URI (Model yolu)
+    # CRITICAL FIX: Model path includes experiment_id (0 by default)
     model_uri = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/mlruns/0/{run_id}/artifacts/model"
     MODEL_URI = model_uri
     
-    logging.info(f"Loading from: {model_uri}")
+    logging.info(f"🔄 Loading from: {model_uri}")
     try:
         model = mlflow.pyfunc.load_model(model_uri)
         logging.info("✅ Model loaded successfully!")
     except Exception as e:
         logging.error(f"❌ Load failed: {e}")
+        logging.error(f"Error type: {type(e).__name__}")
 
 app = FastAPI(version="1.0.0")
 load_model()
