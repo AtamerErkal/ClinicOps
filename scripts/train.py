@@ -73,6 +73,8 @@ def train_model():
             f.write(run_id)
             
         log.info(f"✅ Model saved locally. RUN_ID: {run_id}")
+        
+        # Print for CI/CD pipeline to capture as output
         print(run_id)
 
 if __name__ == "__main__":
