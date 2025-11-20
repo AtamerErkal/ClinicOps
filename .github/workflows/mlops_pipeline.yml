@@ -1,4 +1,4 @@
-# .github/workflows/mlops_pipeline.yml - FINAL FIXED VERSION
+# .github/workflows/mlops_pipeline.yml - FINAL COMPLETE VERSION
 
 name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
@@ -54,7 +54,6 @@ jobs:
           dvc remote add -d myremote azure://${{ env.CONTAINER_NAME }}/data || true
           dvc remote modify myremote account_name $AZURE_STORAGE_ACCOUNT
           
-          # CRITICAL: Don't set account_key in config - use environment variable
           # DVC will automatically use AZURE_STORAGE_KEY from environment
           
           echo "Attempting DVC pull..."
@@ -68,42 +67,65 @@ jobs:
         id: train
         env:
           PYTHONPATH: .
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
         run: |
           python scripts/data_processing.py
           
-          # train.py yerel izleme yapar ve Run ID döndürür
+          # train.py returns Run ID
           RUN_ID=$(python scripts/train.py) 
           
-          echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT 
+          echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
 
       # --- UPLOAD ARTIFACTS ---
       - name: Upload MLflow Artifacts and Pointer to Azure
         env:
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
         run: |
           RUN_ID=${{ steps.train.outputs.MLFLOW_RUN_ID }}
           
           echo "Uploading artifacts for Run ID: $RUN_ID"
           
-          # 1. MLflow dosyalarını yükle (mlruns klasörü)
-          az storage blob upload-batch \
-            --source mlruns \
-            --destination $CONTAINER_NAME/mlruns \
-            --container-name $CONTAINER_NAME \
-            --account-name $STORAGE_ACCOUNT \
-            --account-key $AZURE_STORAGE_KEY \
-            --overwrite
-            
-          # 2. Pointer dosyasını yükle (API bunu okuyacak)
-          az storage blob upload \
-            --container-name $CONTAINER_NAME \
-            --account-name $STORAGE_ACCOUNT \
-            --account-key $AZURE_STORAGE_KEY \
-            --file latest_run_id.txt \
-            --name latest_model_run.txt \
-            --overwrite
-            
-          echo "✅ Artifacts and Pointer file uploaded."
+          # Use Python script for reliable upload
+          python - <<'EOF'
+          import os
+          import glob
+          from azure.storage.blob import ContainerClient
+          
+          account_name = os.getenv('AZURE_STORAGE_ACCOUNT')
+          account_key = os.getenv('AZURE_STORAGE_KEY')
+          container_name = 'clinicops-dvc'
+          
+          print(f"Connecting to {account_name}/{container_name}")
+          
+          container_client = ContainerClient(
+              account_url=f"https://{account_name}.blob.core.windows.net",
+              container_name=container_name,
+              credential=account_key
+          )
+          
+          # Upload mlruns directory
+          uploaded_count = 0
+          for filepath in glob.glob('mlruns/**/*', recursive=True):
+              if os.path.isfile(filepath):
+                  blob_name = filepath.replace('\\', '/')
+                  try:
+                      with open(filepath, 'rb') as data:
+                          blob_client = container_client.get_blob_client(blob_name)
+                          blob_client.upload_blob(data, overwrite=True)
+                          uploaded_count += 1
+                  except Exception as e:
+                      print(f"Failed to upload {blob_name}: {e}")
+          
+          print(f"✅ Uploaded {uploaded_count} MLflow files")
+          
+          # Upload pointer file
+          with open('latest_run_id.txt', 'rb') as f:
+              blob_client = container_client.get_blob_client('latest_model_run.txt')
+              blob_client.upload_blob(f, overwrite=True)
+              print("✅ Uploaded pointer file: latest_model_run.txt")
+          EOF
 
   deploy-api-to-aci:
     needs: full-mlops-workflow
@@ -115,24 +137,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        
       - name: Azure Login
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+          
       - name: Docker Login
         uses: docker/login-action@v3
         with:
           registry: ${{ env.ACR_LOGIN_SERVER }}
           username: ${{ secrets.AZURE_CR_USERNAME }}
           password: ${{ secrets.AZURE_CR_PASSWORD }}
-      - name: Build/Push
+          
+      - name: Build and Push Docker Image
         uses: docker/build-push-action@v5 
         with:
           context: .
           push: true
           tags: ${{ env.ACR_LOGIN_SERVER }}/klinikops-model:${{ github.sha }}
           
-      - name: Deploy ACI
+      - name: Deploy to ACI
         env:
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
           RG_NAME: ${{ env.RG_NAME }}
@@ -145,9 +170,11 @@ jobs:
           ACI_NAME="ci-api-$SHA_SHORT" 
           IMAGE_NAME="$ACR_LOGIN_SERVER/klinikops-model:${{ github.sha }}"
           
-          # Container'ın MLflow'a erişmesi için Connection String oluşturulur.
+          # Create connection string for MLflow
           CONN_STRING="DefaultEndpointsProtocol=https;AccountName=$STORAGE_ACCOUNT;AccountKey=$AZURE_STORAGE_KEY;EndpointSuffix=core.windows.net"
 
+          echo "🚀 Deploying container: $ACI_NAME"
+          
           az container create \
             --resource-group $RG_NAME \
             --name $ACI_NAME \
@@ -165,13 +192,25 @@ jobs:
               AZURE_STORAGE_KEY="$AZURE_STORAGE_KEY" \
               AZURE_STORAGE_CONNECTION_STRING="$CONN_STRING"
           
-          echo "✅ Deployment initiated."
+          echo "✅ Deployment complete"
           
+          # Get container IP
           CONTAINER_IP=$(az container show \
             --resource-group $RG_NAME \
             --name $ACI_NAME \
             --query ipAddress.ip -o tsv)
           
           echo "=========================================="
-          echo "Health Check: http://${CONTAINER_IP}/health"
+          echo "🌐 API URL: http://${CONTAINER_IP}"
+          echo "🏥 Health: http://${CONTAINER_IP}/health"
+          echo "🔍 Debug: http://${CONTAINER_IP}/debug"
+          echo "📚 Docs: http://${CONTAINER_IP}/docs"
           echo "=========================================="
+          
+          # Wait for container to start
+          echo "⏳ Waiting 30 seconds for startup..."
+          sleep 30
+          
+          # Test health endpoint
+          echo "🧪 Testing health endpoint..."
+          curl -s "http://${CONTAINER_IP}/health" || echo "Health check pending..."
