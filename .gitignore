@@ -17,4 +17,6 @@ mlruns/
 .vscode/
 .idea/conn.txt 
 "*.key" 
-"*.txt"   # Opsiyonel, connection dosyalarÕ i‡in
+"*.txt"   # Opsiyonel, connection dosyalarï¿½ iï¿½in
+
+venv/
