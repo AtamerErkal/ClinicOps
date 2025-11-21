@@ -187,6 +187,8 @@ jobs:
             --ports 80 \
             --cpu 1 \
             --memory 1.5 \
+            --os-type Linux \
+            --restart-policy Always \
             --environment-variables \
               AZURE_STORAGE_ACCOUNT="$STORAGE_ACCOUNT" \
               AZURE_STORAGE_KEY="$AZURE_STORAGE_KEY" \
