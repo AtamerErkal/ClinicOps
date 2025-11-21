@@ -8,6 +8,7 @@ from azure.storage.blob import BlobClient
 import logging
 import os
 from pydantic import BaseModel
+from fastapi import APIRouter
 
 logging.basicConfig(level=logging.INFO)
 
@@ -105,6 +106,35 @@ class PatientData(BaseModel):
     secondarydiagnosisnonicd9: str
     discharged: str
     facid: str
+
+
+
+@app.get("/feature_importance", tags=["Prediction"])
+def feature_importance():
+    if model is None:
+        raise HTTPException(503, "Model not loaded")
+    
+    try:
+        # Only works if the model is sklearn RandomForest wrapped in MLflow
+        rf_model = model._model_impl.python_model.model  # PyFunc wrapper internal
+        if hasattr(rf_model, "feature_importances_"):
+            fi = rf_model.feature_importances_
+            # Map to feature names
+            features = [
+                'hematocrit','neutrophils','sodium','glucose','bloodureanitro',
+                'creatinine','bmi','pulse','respiration',
+                'rcount','gender','dialysisrenalendstage','asthma','irondef','pneum',
+                'substancedependence','psychologicaldisordermajor','depress','psychother',
+                'fibrosisandother','malnutrition','hemo','secondarydiagnosisnonicd9',
+                'discharged','facid'
+            ]
+            fi_dict = dict(zip(features, fi))
+            return fi_dict
+        else:
+            return {"error": "Feature importance not available for this model type."}
+    except Exception as e:
+        raise HTTPException(500, detail=f"Feature importance failed: {str(e)}")
+
 
 @app.post("/predict", tags=["Prediction"])
 def predict(data: PatientData):
