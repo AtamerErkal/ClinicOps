@@ -19,3 +19,5 @@ scikit-learn
 pandas
 dvc[azure]
 pytest
+
+azure-mgmt-containerinstance
