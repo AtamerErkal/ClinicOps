@@ -1,29 +1,29 @@
-# scripts/train.py
 import mlflow
 import mlflow.sklearn
 import pandas as pd
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 import os
-from mlflow import artifacts
-from scripts.data_processing import process_data  # <-- pipeline uyumlu import
 from azure.storage.blob import BlobClient, ContainerClient
+from mlflow import artifacts
+from data_processing import process_data
 import logging
 
-logging.basicConfig(level=logging.INFO)
 logging.getLogger("azure").setLevel(logging.WARNING)
 
-EXPERIMENT_ID = "688443907648207122"
+# Dinamik experiment
+EXPERIMENT_NAME = "ClinicOps_LoS"
+
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 CONTAINER_NAME = "clinicops-dvc"
 
-TRAIN_PATH = os.path.join("data", "processed", "train.csv")
-TEST_PATH = os.path.join("data", "processed", "test.csv")
-
+TRAIN_PATH = os.path.join('data', 'processed', 'train.csv')
+TEST_PATH = os.path.join('data', 'processed', 'test.csv')
 
 def upload_directory_to_blob(local_path, blob_prefix):
     container = ContainerClient.from_connection_string(
         AZURE_STORAGE_CONNECTION_STRING,
-        container_name=CONTAINER_NAME,
+        CONTAINER_NAME
     )
     for root, dirs, files in os.walk(local_path):
         for file in files:
@@ -34,19 +34,19 @@ def upload_directory_to_blob(local_path, blob_prefix):
             with open(file_path, "rb") as data:
                 blob_client.upload_blob(data, overwrite=True)
 
-
 def upload_latest_run_id(run_id):
     blob_client = BlobClient.from_connection_string(
         AZURE_STORAGE_CONNECTION_STRING,
-        container_name=CONTAINER_NAME,
-        blob_name="latest_model_run.txt",
+        CONTAINER_NAME,
+        "latest_model_run.txt",
     )
     blob_client.upload_blob(run_id, overwrite=True)
 
-
 def train_and_log_model():
-    mlflow.set_tracking_uri("file:./mlruns")
-    mlflow.set_experiment(experiment_id=EXPERIMENT_ID)
+    # MLflow tracking
+    mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "file:./mlruns")
+    mlflow.set_tracking_uri(mlflow_tracking_uri)
+    mlflow.set_experiment(EXPERIMENT_NAME)
 
     # --- DATA PROCESSING ---
     process_data()  # train/test CSV’leri hazırlandı
@@ -59,8 +59,10 @@ def train_and_log_model():
     test_df = pd.get_dummies(test_df, drop_first=True)
     test_df = test_df.reindex(columns=train_df.columns, fill_value=0)
 
-    X_train = train_df.drop("lengthofstay", axis=1)
-    y_train = train_df["lengthofstay"]
+    X_train = train_df.drop('lengthofstay', axis=1)
+    y_train = train_df['lengthofstay']
+    X_test = test_df.drop('lengthofstay', axis=1)
+    y_test = test_df['lengthofstay']
 
     # --- MODEL TRAINING ---
     model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
@@ -73,13 +75,12 @@ def train_and_log_model():
 
     # --- AZURE UPLOAD ---
     local_model_path = artifacts.download_artifacts(run_id=run_id, artifact_path="model")
-    upload_directory_to_blob(local_model_path, f"mlruns/{EXPERIMENT_ID}/{run_id}/artifacts/model")
+    upload_directory_to_blob(local_model_path, f"mlruns/{EXPERIMENT_NAME}/{run_id}/artifacts/model")
     upload_latest_run_id(run_id)
 
-    logging.info(f"✅ Model uploaded successfully. Run ID: {run_id}")
+    print("✅ Model uploaded successfully.")
+    print("Run ID:", run_id)
     return run_id
 
-
 if __name__ == "__main__":
-    run_id = train_and_log_model()
-    print(run_id)
+    train_and_log_model()
