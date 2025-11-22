@@ -134,17 +134,25 @@ jobs:
         run: |
           NEW_TAG="${{ steps.build_and_push.outputs.NEW_TAG }}"
           UI_IMAGE=${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:$NEW_TAG
-          cd app && docker build -t $UI_IMAGE .  # Context'i app/'e al, Dockerfile otomatik
+          cd app && docker build -t $UI_IMAGE .
           cd .. && docker push $UI_IMAGE
           ACI_FQDN="${{ env.ACI_API_PREFIX }}-${NEW_TAG}.${{ env.LOCATION }}.azurecontainer.io"
+          # RG'yi oluştur (eğer yok ise)
+          az group create --name ${{ env.RG_NAME }} --location ${{ env.LOCATION }} || true
+          # ACI create (os-type explicit = ile, hata handling)
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name ${{ env.ACI_UI_NAME }} \
             --image $UI_IMAGE \
+            --dns-name-label ${{ env.ACI_UI_NAME }}-${NEW_TAG} \
             --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
             --registry-username ${{ env.ACR_USERNAME }} \
             --registry-password ${{ env.ACR_PASSWORD }} \
             --ports 8501 \
+            --cpu 1 \
+            --memory 1.5 \
+            --os-type=Linux \
             --restart-policy Always \
+            --location ${{ env.LOCATION }} \
             --environment-variables CLINICOPS_API_URL=http://${ACI_FQDN}:8000 \
-            || az container restart -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }}
+            || echo "Create failed, trying restart..." && az container restart -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} || echo "Restart also failed - check logs"
