@@ -65,7 +65,8 @@ jobs:
           AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
         run: |
           python scripts/data_processing.py
-          RUN_ID=$(python scripts/train.py)
+          # RUN_ID'yi temizle: Sadece "Run ID:" içeren satırı al, ID'yi extract et
+          RUN_ID=$(python scripts/train.py 2>&1 | grep "Run ID:" | tail -1 | sed 's/.*Run ID: //')
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
 
       # --- UPLOAD ARTIFACTS ---
@@ -99,6 +100,7 @@ jobs:
 
       # --- BUILD + PUSH API IMAGE ---
       - name: Build and Push API Docker Image
+        id: build_and_push
         run: |
           NEW_TAG=$(date +'%Y%m%d%H%M%S')
           IMAGE_NAME=${{ env.ACR_LOGIN_SERVER }}/clinicops-api:$NEW_TAG
@@ -125,7 +127,7 @@ jobs:
             --memory 1.5 \
             --os-type Linux \
             --restart-policy Always \
-            --environment-variables MODEL_TAG=${{ steps.train.outputs.MLFLOW_RUN_ID }}
+            --environment-variables MLFLOW_RUN_ID=${{ needs.full-mlops-workflow.outputs.run_id }}
 
           # Delete old API containers
           ACTIVE=$ACI_NAME
@@ -139,9 +141,11 @@ jobs:
       # --- DEPLOY STREAMLIT UI ---
       - name: Build & Deploy Streamlit UI
         run: |
-          UI_IMAGE=${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:${{ steps.build_and_push.outputs.NEW_TAG }}
+          NEW_TAG="${{ steps.build_and_push.outputs.NEW_TAG }}"
+          UI_IMAGE=${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:$NEW_TAG
           docker build -t $UI_IMAGE -f app/Dockerfile app
           docker push $UI_IMAGE
+          ACI_FQDN="${{ env.ACI_API_PREFIX }}-${NEW_TAG}.${{ env.LOCATION }}.azurecontainer.io"
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name ${{ env.ACI_UI_NAME }} \
@@ -151,5 +155,5 @@ jobs:
             --registry-password ${{ env.ACR_PASSWORD }} \
             --ports 8501 \
             --restart-policy Always \
-            --environment-variables CLINICOPS_API_URL=http://${{ env.ACI_API_PREFIX }}-${{ steps.build_and_push.outputs.NEW_TAG }}:8000 \
+            --environment-variables CLINICOPS_API_URL=http://${ACI_FQDN}:8000 \
             || az container restart -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }}

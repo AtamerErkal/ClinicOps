@@ -3,9 +3,10 @@ import streamlit as st
 import requests
 import plotly.graph_objects as go
 from datetime import datetime
+import os
 
 # --- Configuration ---
-API_URL = "http://20.103.166.173"
+API_URL = os.getenv("CLINICOPS_API_URL", "http://localhost:8000")
 
 # --- Feature Definitions ---
 NUMERIC_FEATURES = {
@@ -149,7 +150,7 @@ with col2:
     conditions = sum([1 for k,v in input_data.items() if k in CATEGORICAL_FEATURES and v=='Yes'])
     fig = go.Figure([go.Pie(labels=['Active Conditions','No Conditions'], 
                             values=[conditions,len(CATEGORICAL_FEATURES)-conditions],
-                            hole=0.3, marker_colors=['#ff6b6b','#38ef7d'])])
+                            hole=0.3, marker_colors=['#ff6b6b','#38ef7d'])]))
     fig.update_layout(title="Medical Conditions Overview", height=400)
     st.plotly_chart(fig, use_container_width=True)
 

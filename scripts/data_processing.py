@@ -13,16 +13,10 @@ TEST_PATH = os.path.join(PROCESSED_DIR, "test.csv")
 
 
 def process_data(test_size=0.2, random_state=42):
-    """Load raw CSV, preprocess, split, and save train/test CSVs."""
+    """Load raw CSV, split, and save train/test CSVs (preprocessing in train.py)."""
     logging.info(f"Starting data processing. Loading data from {RAW_PATH}...")
 
     df = pd.read_csv(RAW_PATH)
-
-    # Convert categorical columns to numeric codes
-    cat_cols = ["rcount", "gender", "discharged", "facid"]
-    for col in cat_cols:
-        df[col] = pd.Categorical(df[col]).codes
-        logging.info(f"Converted {col} to numeric codes.")
 
     # Split into train/test
     train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
