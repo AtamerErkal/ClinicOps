@@ -6,7 +6,6 @@ from sklearn.ensemble import RandomForestRegressor
 import os
 from azure.storage.blob import BlobClient, ContainerClient
 from mlflow import artifacts
-from data_processing import process_data
 import logging
 
 logging.getLogger("azure").setLevel(logging.WARNING)
@@ -48,13 +47,11 @@ def train_and_log_model():
     mlflow.set_tracking_uri(mlflow_tracking_uri)
     mlflow.set_experiment(EXPERIMENT_NAME)
 
-    # --- DATA PROCESSING ---
-    process_data()  # train/test CSV’leri hazırlandı
-
+    # Load train/test (preprocessed raw)
     train_df = pd.read_csv(TRAIN_PATH)
     test_df = pd.read_csv(TEST_PATH)
 
-    # --- Categorical → Numeric ---
+    # --- Categorical → Numeric (tüm cat'leri get_dummies ile) ---
     train_df = pd.get_dummies(train_df, drop_first=True)
     test_df = pd.get_dummies(test_df, drop_first=True)
     test_df = test_df.reindex(columns=train_df.columns, fill_value=0)
@@ -71,16 +68,17 @@ def train_and_log_model():
     # --- MLflow Logging ---
     with mlflow.start_run() as run:
         run_id = run.info.run_id
-        mlflow.sklearn.log_model(model, artifact_path="model")
+        mlflow.sklearn.log_model(model, "model")  # artifact_path yerine "model"
 
     # --- AZURE UPLOAD ---
-    local_model_path = artifacts.download_artifacts(run_id=run_id, artifact_path="model")
-    upload_directory_to_blob(local_model_path, f"mlruns/{EXPERIMENT_NAME}/{run_id}/artifacts/model")
+    local_model_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path="model")
+    upload_directory_to_blob(local_model_path, f"models/{run_id}/model")  # Sabit path
     upload_latest_run_id(run_id)
 
-    print("✅ Model uploaded successfully.")
-    print("Run ID:", run_id)
+    logging.info("✅ Model uploaded successfully.")
+    logging.info(f"Run ID: {run_id}")
     return run_id
 
 if __name__ == "__main__":
-    train_and_log_model()
+    run_id = train_and_log_model()
+    print(run_id)  # Sadece ID'yi print et, capture için temiz

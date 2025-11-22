@@ -24,11 +24,7 @@ RUN pip install fastapi uvicorn[standard]
 RUN pip install mlflow
 
 # Copy the application code
-COPY app /app/app
-# Copy other necessary project files if needed for context (though not strictly for the API)
-# COPY scripts /app/scripts 
-# COPY data /app/data 
+COPY . /app
 
 # Command to run the application using Uvicorn
-# app.api:app refers to the 'app' object inside 'app/api.py'
-CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
