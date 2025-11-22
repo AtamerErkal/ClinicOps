@@ -4,7 +4,7 @@ name: KlinikOps MLOps Pipeline (CI/CD/DVC/ACI)
 
 on:
   push:
-    branches: [ main ]
+    branches: []
   workflow_dispatch:
 
 env:
