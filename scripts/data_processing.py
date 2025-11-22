@@ -1,60 +1,43 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
-import os
+import numpy as np
 import logging
+import os
+from sklearn.model_selection import train_test_split
 
-# Setup basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 
-# Define paths
-RAW_DATA_PATH = os.path.join('data', 'raw', 'Patient_Stay_Data.csv')
-PROCESSED_DATA_DIR = os.path.join('data', 'processed')
-TRAIN_PATH = os.path.join(PROCESSED_DATA_DIR, 'train.csv')
-TEST_PATH = os.path.join(PROCESSED_DATA_DIR, 'test.csv')
+RAW_DATA_PATH = "data/raw/Patient_Stay_Data.csv"
+PROCESSED_DATA_PATH = "data/processed"
 
-def process_data(raw_path=RAW_DATA_PATH, train_path=TRAIN_PATH, test_path=TEST_PATH, test_size=0.2):
-    """
-    Loads raw data, cleans it, converts categorical to numeric,
-    splits into train/test, and saves processed CSVs.
-    """
-    try:
-        logging.info(f"Starting data processing. Loading data from {raw_path}...")
-        df = pd.read_csv(raw_path)
+os.makedirs(PROCESSED_DATA_PATH, exist_ok=True)
 
-        # --- Data Cleaning ---
-        columns_to_drop = ['eid', 'vdate']  # facid is kept
-        df = df.drop(columns_to_drop, axis=1, errors='ignore')
+def preprocess_data():
+    logging.info(f"Starting data processing. Loading data from {RAW_DATA_PATH}...")
+    df = pd.read_csv(RAW_DATA_PATH)
 
-        # --- Target Check ---
-        target = 'lengthofstay'
-        if target not in df.columns:
-            logging.error(f"Target variable '{target}' not found in data.")
-            raise ValueError(f"Target variable '{target}' not found.")
+    # Basit encoding
+    for col in ['rcount','gender','discharged','facid']:
+        df[col] = df[col].astype('category').cat.codes
+        logging.info(f"Converted {col} to numeric codes.")
 
-        # --- Categorical → Numeric ---
-        cat_cols = df.select_dtypes(include='object').columns
-        for col in cat_cols:
-            df[col] = df[col].astype('category').cat.codes
-            logging.info(f"Converted {col} to numeric codes.")
+    # Split
+    target = 'lengthofstay'
+    X = df.drop(columns=[target])
+    y = df[target]
 
-        # --- Split ---
-        logging.info(f"Splitting data... Target: {target}, Test size: {test_size}")
-        train_df, test_df = train_test_split(df, test_size=test_size, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
 
-        # --- Save CSV ---
-        os.makedirs(os.path.dirname(train_path), exist_ok=True)
-        train_df.to_csv(train_path, index=False)
-        test_df.to_csv(test_path, index=False)
+    # Save
+    train_path = os.path.join(PROCESSED_DATA_PATH, "train.csv")
+    test_path = os.path.join(PROCESSED_DATA_PATH, "test.csv")
+    pd.concat([X_train, y_train], axis=1).to_csv(train_path, index=False)
+    pd.concat([X_test, y_test], axis=1).to_csv(test_path, index=False)
 
-        logging.info(f"Data successfully processed and saved.")
-        logging.info(f"Train data shape: {train_df.shape}")
-        logging.info(f"Test data shape: {test_df.shape}")
-
-    except FileNotFoundError:
-        logging.error(f"Raw data file not found at {raw_path}. Did 'dvc pull' run successfully?")
-    except Exception as e:
-        logging.error(f"An error occurred during data processing: {e}")
-
+    logging.info(f"Data successfully processed and saved.")
+    logging.info(f"Train data shape: {X_train.shape}")
+    logging.info(f"Test data shape: {X_test.shape}")
 
 if __name__ == "__main__":
-    process_data()
+    preprocess_data()
