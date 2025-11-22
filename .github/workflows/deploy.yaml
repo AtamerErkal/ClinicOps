@@ -1,26 +1,83 @@
-# deploy.yaml - KlinikOps Auto Deploy
-
-name: Auto-Deploy-ClinicOps
+# .github/workflows/mlops_pipeline.yml
+name: KlinikOps Full MLOps Pipeline (CI/CD/DVC/Train/Deploy)
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 env:
-  RESOURCE_GROUP: ClinicOps-RG
+  RG_NAME: ClinicOps-RG
   LOCATION: westeurope
-  ACR_NAME: clinicopsacr2025
-  ACI_API_PREFIX: clinicops-api
-  ACI_UI_NAME: clinicops-ui
+  STORAGE_ACCOUNT: clinicopsdvcstorage2025
+  CONTAINER_NAME: clinicops-dvc
+  ACR_LOGIN_SERVER: ${{ secrets.AZURE_CR_LOGIN_SERVER }}
 
 jobs:
-  build-and-deploy:
+  full-mlops-workflow:
     runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.train.outputs.MLFLOW_RUN_ID }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install dvc[azure] azure-storage-blob
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # --- DVC Pull Data ---
+      - name: DVC Pull Data
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        run: |
+          dvc remote add -d myremote azure://${{ env.CONTAINER_NAME }}/data || true
+          dvc remote modify myremote account_name $AZURE_STORAGE_ACCOUNT
+          dvc pull -v
+
+      # --- Train Model ---
+      - name: Run Data Processing and Train Model
+        id: train
+        env:
+          PYTHONPATH: .
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        run: |
+          python scripts/data_processing.py
+          RUN_ID=$(python scripts/train.py)
+          echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
+
+      # --- Upload Artifacts & Pointer ---
+      - name: Upload MLflow Artifacts and Pointer
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        run: |
+          RUN_ID=${{ steps.train.outputs.MLFLOW_RUN_ID }}
+          python scripts/upload_artifacts.py --run-id $RUN_ID
+
+  deploy-to-aci:
+    needs: full-mlops-workflow
+    runs-on: ubuntu-latest
+    environment: Production
+    steps:
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Azure Login
@@ -28,81 +85,81 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Azure ACR Login
-        run: az acr login --name $ACR_NAME
+      - name: Docker Login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.AZURE_CR_USERNAME }}
+          password: ${{ secrets.AZURE_CR_PASSWORD }}
 
-      - name: Create dynamic variables
-        id: vars
+      # --- Build and Push API ---
+      - name: Build & Push API Docker Image
         run: |
           NEW_TAG=$(date +'%Y%m%d%H%M%S')
-          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
-          echo "new_api_name=${ACI_API_PREFIX}-${NEW_TAG}" >> $GITHUB_OUTPUT
+          docker build -t $ACR_LOGIN_SERVER/clinicops-api:$NEW_TAG -f Dockerfile .
+          docker push $ACR_LOGIN_SERVER/clinicops-api:$NEW_TAG
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
 
-      - name: Build API Docker image
+      # --- Deploy API to ACI ---
+      - name: Deploy API Container
+        env:
+          RG_NAME: ${{ env.RG_NAME }}
+          ACR_LOGIN_SERVER: ${{ env.ACR_LOGIN_SERVER }}
+          ACR_USERNAME: ${{ secrets.AZURE_CR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.AZURE_CR_PASSWORD }}
+          NEW_TAG: ${{ steps.build-and-push.outputs.NEW_TAG }}
         run: |
-          docker build -t $ACR_NAME.azurecr.io/clinicops-api:${{ steps.vars.outputs.new_tag }} -f Dockerfile .
-
-      - name: Push API image
-        run: |
-          docker push $ACR_NAME.azurecr.io/clinicops-api:${{ steps.vars.outputs.new_tag }}
-
-      - name: Deploy New ACI API
-        run: |
-          az container create \
-            --resource-group $RESOURCE_GROUP \
-            --name ${{ steps.vars.outputs.new_api_name }} \
-            --image $ACR_NAME.azurecr.io/clinicops-api:${{ steps.vars.outputs.new_tag }} \
-            --registry-login-server ${{ secrets.AZURE_CR_LOGIN_SERVER }} \
-            --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
-            --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
-            --os-type Linux \
-            --restart-policy Always \
-            --environment-variables MODEL_TAG=${{ steps.vars.outputs.new_tag }} \
-            --ports 8000
-
-      - name: Get New API URL
-        id: apiurl
-        run: |
-          URL=$(az container show \
-            --resource-group $RESOURCE_GROUP \
-            --name ${{ steps.vars.outputs.new_api_name }} \
-            --query "ipAddress.fqdn" -o tsv)
-          echo "url=http://$URL:8000" >> $GITHUB_OUTPUT
-
-      - name: Delete old ACI instances
-        run: |
-          ACTIVE=${{ steps.vars.outputs.new_api_name }}
-          for ACI in $(az container list -g $RESOURCE_GROUP --query "[].name" -o tsv); do
-            if [ "$ACI" != "$ACTIVE" ] && [[ "$ACI" == clinicops-api-* ]]; then
-              echo "Deleting old API: $ACI"
-              az container delete -g $RESOURCE_GROUP -n $ACI --yes
+          API_NAME="clinicops-api-${NEW_TAG}"
+          # Delete old API containers
+          for c in $(az container list -g $RG_NAME --query "[].name" -o tsv); do
+            if [[ $c == clinicops-api-* ]]; then
+              echo "Deleting old API: $c"
+              az container delete -g $RG_NAME -n $c --yes
             fi
           done
 
-      - name: Update Streamlit ENV
-        run: |
-          echo "CLINICOPS_API_URL=${{ steps.apiurl.outputs.url }}" > app/.env
-          cat app/.env
-
-      - name: Build UI Docker image
-        run: |
-          docker build -t $ACR_NAME.azurecr.io/clinicops-ui:${{ steps.vars.outputs.new_tag }} -f app/Dockerfile app
-
-      - name: Push UI image
-        run: |
-          docker push $ACR_NAME.azurecr.io/clinicops-ui:${{ steps.vars.outputs.new_tag }}
-
-      - name: Deploy UI container
-        run: |
+          # Deploy new API
           az container create \
-            --resource-group $RESOURCE_GROUP \
-            --name $ACI_UI_NAME \
-            --image $ACR_NAME.azurecr.io/clinicops-ui:${{ steps.vars.outputs.new_tag }} \
-            --registry-login-server ${{ secrets.AZURE_CR_LOGIN_SERVER }} \
-            --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
-            --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
+            --resource-group $RG_NAME \
+            --name $API_NAME \
+            --image $ACR_LOGIN_SERVER/clinicops-api:$NEW_TAG \
+            --registry-login-server $ACR_LOGIN_SERVER \
+            --registry-username $ACR_USERNAME \
+            --registry-password $ACR_PASSWORD \
+            --cpu 1 \
+            --memory 1.5 \
+            --ports 8000 \
             --os-type Linux \
             --restart-policy Always \
+            --environment-variables MODEL_TAG=${{ steps.full-mlops-workflow.outputs.run_id }}
+
+      # --- Build & Deploy Streamlit UI ---
+      - name: Build & Push UI Docker Image
+        run: |
+          docker build -t $ACR_LOGIN_SERVER/clinicops-ui:$NEW_TAG -f app/Dockerfile app
+          docker push $ACR_LOGIN_SERVER/clinicops-ui:$NEW_TAG
+
+      - name: Deploy UI Container
+        run: |
+          UI_NAME="clinicops-ui"
+          # Delete old UI container
+          for c in $(az container list -g $RG_NAME --query "[].name" -o tsv); do
+            if [[ $c == clinicops-ui ]]; then
+              echo "Deleting old UI: $c"
+              az container delete -g $RG_NAME -n $c --yes
+            fi
+          done
+          # Deploy new UI
+          az container create \
+            --resource-group $RG_NAME \
+            --name $UI_NAME \
+            --image $ACR_LOGIN_SERVER/clinicops-ui:$NEW_TAG \
+            --registry-login-server $ACR_LOGIN_SERVER \
+            --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
+            --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
+            --cpu 1 \
+            --memory 1.5 \
             --ports 8501 \
-            --environment-variables CLINICOPS_API_URL=${{ steps.apiurl.outputs.url }} \
-            || az container restart -g $RESOURCE_GROUP -n $ACI_UI_NAME
+            --os-type Linux \
+            --restart-policy Always \
+            --environment-variables CLINICOPS_API_URL="http://clinicops-api-${NEW_TAG}:8000"
