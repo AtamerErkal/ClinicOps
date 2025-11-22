@@ -1,43 +1,39 @@
+# scripts/data_processing.py
 import pandas as pd
-import numpy as np
-import logging
 import os
+import logging
 from sklearn.model_selection import train_test_split
 
 logging.basicConfig(level=logging.INFO)
 
-RAW_DATA_PATH = "data/raw/Patient_Stay_Data.csv"
-PROCESSED_DATA_PATH = "data/processed"
+RAW_PATH = os.path.join("data", "raw", "Patient_Stay_Data.csv")
+PROCESSED_DIR = os.path.join("data", "processed")
+TRAIN_PATH = os.path.join(PROCESSED_DIR, "train.csv")
+TEST_PATH = os.path.join(PROCESSED_DIR, "test.csv")
 
-os.makedirs(PROCESSED_DATA_PATH, exist_ok=True)
 
-def preprocess_data():
-    logging.info(f"Starting data processing. Loading data from {RAW_DATA_PATH}...")
-    df = pd.read_csv(RAW_DATA_PATH)
+def process_data(test_size=0.2, random_state=42):
+    """Load raw CSV, preprocess, split, and save train/test CSVs."""
+    logging.info(f"Starting data processing. Loading data from {RAW_PATH}...")
 
-    # Basit encoding
-    for col in ['rcount','gender','discharged','facid']:
-        df[col] = df[col].astype('category').cat.codes
+    df = pd.read_csv(RAW_PATH)
+
+    # Convert categorical columns to numeric codes
+    cat_cols = ["rcount", "gender", "discharged", "facid"]
+    for col in cat_cols:
+        df[col] = pd.Categorical(df[col]).codes
         logging.info(f"Converted {col} to numeric codes.")
 
-    # Split
-    target = 'lengthofstay'
-    X = df.drop(columns=[target])
-    y = df[target]
+    # Split into train/test
+    train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
+    os.makedirs(PROCESSED_DIR, exist_ok=True)
+    train_df.to_csv(TRAIN_PATH, index=False)
+    test_df.to_csv(TEST_PATH, index=False)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+    logging.info("Data successfully processed and saved.")
+    logging.info(f"Train data shape: {train_df.shape}")
+    logging.info(f"Test data shape: {test_df.shape}")
 
-    # Save
-    train_path = os.path.join(PROCESSED_DATA_PATH, "train.csv")
-    test_path = os.path.join(PROCESSED_DATA_PATH, "test.csv")
-    pd.concat([X_train, y_train], axis=1).to_csv(train_path, index=False)
-    pd.concat([X_test, y_test], axis=1).to_csv(test_path, index=False)
-
-    logging.info(f"Data successfully processed and saved.")
-    logging.info(f"Train data shape: {X_train.shape}")
-    logging.info(f"Test data shape: {X_test.shape}")
 
 if __name__ == "__main__":
-    preprocess_data()
+    process_data()
