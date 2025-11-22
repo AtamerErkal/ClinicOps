@@ -69,8 +69,6 @@ jobs:
           RUN_ID=$(python scripts/train.py 2>&1 | grep "Run ID:" | tail -1 | sed 's/.*Run ID: //')
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
 
-      # UPLOAD ARTIFACTS step'i kaldırıldı (train.py zaten upload ediyor)
-
   deploy-api-to-aci:
     needs: full-mlops-workflow
     runs-on: ubuntu-latest
