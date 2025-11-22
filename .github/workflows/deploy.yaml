@@ -6,9 +6,9 @@ on:
       - main
 
 env:
-  RESOURCE_GROUP: clinicops-rg
+  RESOURCE_GROUP: ClinicOps-RG
   LOCATION: westeurope
-  ACR_NAME: clinicopsacr
+  ACR_NAME: clinicopsacr2025
   ACI_API_PREFIX: clinicops-api
   ACI_UI_NAME: clinicops-ui
 
