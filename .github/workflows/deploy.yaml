@@ -129,13 +129,13 @@ jobs:
             fi
           done
 
-      # --- DEPLOY STREAMLIT UI ---
+# --- DEPLOY STREAMLIT UI ---
       - name: Build & Deploy Streamlit UI
         run: |
           NEW_TAG="${{ steps.build_and_push.outputs.NEW_TAG }}"
           UI_IMAGE=${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:$NEW_TAG
-          docker build -t $UI_IMAGE -f app/Dockerfile app
-          docker push $UI_IMAGE
+          cd app && docker build -t $UI_IMAGE .  # Context'i app/'e al, Dockerfile otomatik
+          cd .. && docker push $UI_IMAGE
           ACI_FQDN="${{ env.ACI_API_PREFIX }}-${NEW_TAG}.${{ env.LOCATION }}.azurecontainer.io"
           az container create \
             --resource-group ${{ env.RG_NAME }} \
