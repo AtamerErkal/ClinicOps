@@ -55,6 +55,7 @@ jobs:
             --registry-login-server ${{ secrets.AZURE_CR_LOGIN_SERVER }} \
             --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
             --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
+            --os-type Linux \
             --restart-policy Always \
             --environment-variables MODEL_TAG=${{ steps.vars.outputs.new_tag }} \
             --ports 8000
@@ -100,6 +101,7 @@ jobs:
             --registry-login-server ${{ secrets.AZURE_CR_LOGIN_SERVER }} \
             --registry-username ${{ secrets.AZURE_CR_USERNAME }} \
             --registry-password ${{ secrets.AZURE_CR_PASSWORD }} \
+            --os-type Linux \
             --restart-policy Always \
             --ports 8501 \
             --environment-variables CLINICOPS_API_URL=${{ steps.apiurl.outputs.url }} \
