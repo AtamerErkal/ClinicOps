@@ -53,7 +53,7 @@ jobs:
       # -----------------------------------------------------
       - name: Build API Docker image
         run: |
-          docker build -t $ACR_NAME.azurecr.io/clinicops-api:${{ steps.vars.outputs.new_tag }} -f api/Dockerfile api
+          docker build -t $ACR_NAME.azurecr.io/clinicops-api:${{ steps.vars.outputs.new_tag }} -f Dockerfile .
 
       - name: Push API image
         run: |
