@@ -1,0 +1,134 @@
+name: Auto-Deploy-ClinicOps
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  RESOURCE_GROUP: clinicops-rg
+  LOCATION: westeurope
+  ACR_NAME: clinicopsacr
+  ACI_API_PREFIX: clinicops-api
+  ACI_UI_NAME: clinicops-ui
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # -----------------------------------------------------
+      # CHECKOUT
+      # -----------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------
+      # LOGIN TO AZURE
+      # -----------------------------------------------------
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # -----------------------------------------------------
+      # ACR LOGIN
+      # -----------------------------------------------------
+      - name: Azure ACR Login
+        run: az acr login --name $ACR_NAME
+
+      # -----------------------------------------------------
+      # SET VARIABLES
+      # -----------------------------------------------------
+      - name: Create dynamic variables
+        id: vars
+        run: |
+          NEW_TAG=$(date +'%Y%m%d%H%M%S')
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "new_api_name=${ACI_API_PREFIX}-${NEW_TAG}" >> $GITHUB_OUTPUT
+
+      # -----------------------------------------------------
+      # BUILD + PUSH MODEL API
+      # -----------------------------------------------------
+      - name: Build API Docker image
+        run: |
+          docker build -t $ACR_NAME.azurecr.io/clinicops-api:${{ steps.vars.outputs.new_tag }} -f api/Dockerfile api
+
+      - name: Push API image
+        run: |
+          docker push $ACR_NAME.azurecr.io/clinicops-api:${{ steps.vars.outputs.new_tag }}
+
+      # -----------------------------------------------------
+      # DEPLOY NEW ACI API
+      # -----------------------------------------------------
+      - name: Deploy New ACI API
+        run: |
+          az container create \
+            --resource-group $RESOURCE_GROUP \
+            --name ${{ steps.vars.outputs.new_api_name }} \
+            --image $ACR_NAME.azurecr.io/clinicops-api:${{ steps.vars.outputs.new_tag }} \
+            --registry-login-server $ACR_NAME.azurecr.io \
+            --restart-policy Always \
+            --environment-variables MODEL_TAG=${{ steps.vars.outputs.new_tag }} \
+            --ports 8000
+
+      # -----------------------------------------------------
+      # GET NEW ACI API URL
+      # -----------------------------------------------------
+      - name: Get New API URL
+        id: apiurl
+        run: |
+          URL=$(az container show \
+            --resource-group $RESOURCE_GROUP \
+            --name ${{ steps.vars.outputs.new_api_name }} \
+            --query "ipAddress.fqdn" -o tsv)
+
+          echo "url=http://$URL:8000" >> $GITHUB_OUTPUT
+
+      # -----------------------------------------------------
+      # DELETE OLD ACI APIs
+      # -----------------------------------------------------
+      - name: Delete old ACI instances
+        run: |
+          ACTIVE=${{ steps.vars.outputs.new_api_name }}
+          for ACI in $(az container list -g $RESOURCE_GROUP --query "[].name" -o tsv); do
+            if [ "$ACI" != "$ACTIVE" ] && [[ "$ACI" == clinicops-api-* ]]; then
+              echo "Deleting old API: $ACI"
+              az container delete -g $RESOURCE_GROUP -n $ACI --yes
+            fi
+          done
+
+      # -----------------------------------------------------
+      # UPDATE STREAMLIT .env
+      # -----------------------------------------------------
+      - name: Update Streamlit ENV
+        run: |
+          echo "CLINICOPS_API_URL=${{ steps.apiurl.outputs.url }}" > app/.env
+          cat app/.env
+
+      # -----------------------------------------------------
+      # BUILD UI IMAGE
+      # -----------------------------------------------------
+      - name: Build UI Docker image
+        run: |
+          docker build -t $ACR_NAME.azurecr.io/clinicops-ui:${{ steps.vars.outputs.new_tag }} -f app/Dockerfile app
+
+      - name: Push UI image
+        run: |
+          docker push $ACR_NAME.azurecr.io/clinicops-ui:${{ steps.vars.outputs.new_tag }}
+
+      # -----------------------------------------------------
+      # DEPLOY UI ACI
+      # -----------------------------------------------------
+      - name: Deploy UI container
+        run: |
+          az container create \
+            --resource-group $RESOURCE_GROUP \
+            --name $ACI_UI_NAME \
+            --image $ACR_NAME.azurecr.io/clinicops-ui:${{ steps.vars.outputs.new_tag }} \
+            --registry-login-server $ACR_NAME.azurecr.io \
+            --restart-policy Always \
+            --ports 8501 \
+            --environment-variables CLINICOPS_API_URL=${{ steps.apiurl.outputs.url }} \
+            || az container restart -g $RESOURCE_GROUP -n $ACI_UI_NAME

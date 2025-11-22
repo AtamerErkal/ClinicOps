@@ -5,11 +5,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 import os
 from azure.storage.blob import BlobClient, ContainerClient
-from mlflow import artifacts  # ✅ Artifact API
-
+from mlflow import artifacts
 from data_processing import process_data
-
 import logging
+
 logging.getLogger("azure").setLevel(logging.WARNING)
 
 EXPERIMENT_ID = "688443907648207122"
@@ -68,7 +67,6 @@ def train_and_log_model():
     # --- MLflow Logging ---
     with mlflow.start_run() as run:
         run_id = run.info.run_id
-        # Artifact API ile path alıyoruz
         mlflow.sklearn.log_model(model, artifact_path="model")
     
     # --- MLflow artifact download ile fiziksel path al ---
