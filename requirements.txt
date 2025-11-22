@@ -1,3 +1,4 @@
+# requirements.txt dosyasını Notepad ile aç, şu içeriği yapıştır ve kaydet:
 pytest
 flake8
 numpy
@@ -5,8 +6,6 @@ python-multipart
 adlfs
 streamlit
 requests
-
-
 mlflow
 mlflow[azure]
 azure-storage-blob
@@ -19,5 +18,5 @@ scikit-learn
 pandas
 dvc[azure]
 pytest
-
+plotly
 azure-mgmt-containerinstance
