@@ -103,7 +103,7 @@ jobs:
       # --- DEPLOY NEW ACI API & DELETE OLD ---
       - name: Deploy API to ACI
         run: |
-          ACI_NAME="${{ env.ACI_API_PREFIX }}-${{ steps.build_and_push.outputs.NEW_TAG }}"
+          ACI_NAME="$$ {{ env.ACI_API_PREFIX }}- $${{ steps.build_and_push.outputs.NEW_TAG }}"
           echo "Deploying container: $ACI_NAME"
           az container create \
             --resource-group ${{ env.RG_NAME }} \
@@ -116,15 +116,15 @@ jobs:
             --ports 8000 \
             --cpu 1 \
             --memory 1.5 \
-            --os-type Linux \
+            --os-type=Linux \
             --restart-policy Always \
             --location ${{ env.LOCATION }} \
-            --environment-variables MLFLOW_RUN_ID=${{ needs.full-mlops-workflow.outputs.run_id }} AZURE_STORAGE_ACCOUNT=${{ env.STORAGE_ACCOUNT }} AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }} AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }} RG_NAME=${{ env.RG_NAME }} LOCATION=${{ env.LOCATION }}
-
+            --environment-variables MLFLOW_RUN_ID=$$ {{ needs.full-mlops-workflow.outputs.run_id }} AZURE_STORAGE_ACCOUNT= $${{ env.STORAGE_ACCOUNT }} AZURE_STORAGE_CONNECTION_STRING=$$ {{ secrets.AZURE_STORAGE_CONNECTION_STRING }} AZURE_STORAGE_KEY= $${{ secrets.AZURE_STORAGE_KEY }} AZURE_SUBSCRIPTION_ID=$$ {{ secrets.AZURE_SUBSCRIPTION_ID }} RG_NAME= $${{ env.RG_NAME }} LOCATION=$$ {{ env.LOCATION }} CONTAINER_NAME= $${{ env.CONTAINER_NAME }}
+      
           # Delete old API containers
           ACTIVE=$ACI_NAME
           for ACI in $(az container list -g ${{ env.RG_NAME }} --query "[].name" -o tsv); do
-            if [ "$ACI" != "$ACTIVE" ] && [[ "$ACI" == "${{ env.ACI_API_PREFIX }}-"* ]]; then
+            if [ "$ACI" != "$ACTIVE" ] && [[ "$$ ACI" == " $${{ env.ACI_API_PREFIX }}-"* ]]; then
               echo "Deleting old API: $ACI"
               az container delete -g ${{ env.RG_NAME }} -n $ACI --yes
             fi
