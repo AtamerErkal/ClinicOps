@@ -118,6 +118,7 @@ jobs:
             --memory 1.5 \
             --os-type Linux \
             --restart-policy Always \
+            --location ${{ env.LOCATION }} \
             --environment-variables MLFLOW_RUN_ID=${{ needs.full-mlops-workflow.outputs.run_id }}
 
           # Delete old API containers
@@ -137,8 +138,6 @@ jobs:
           cd app && docker build -t $UI_IMAGE .
           cd .. && docker push $UI_IMAGE
           ACI_FQDN="${{ env.ACI_API_PREFIX }}-${NEW_TAG}.${{ env.LOCATION }}.azurecontainer.io"
-          # RG'yi oluştur (eğer yok ise)
-          az group create --name ${{ env.RG_NAME }} --location ${{ env.LOCATION }} || true
           # ACI create (os-type explicit = ile, hata handling)
           az container create \
             --resource-group ${{ env.RG_NAME }} \
