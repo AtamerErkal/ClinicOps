@@ -1,12 +1,10 @@
-# Dockerfile
+# Dockerfile (API için - FastAPI/Uvicorn)
 
-# Use Python 3.11 slim image as base
 FROM python:3.11-slim
 
-# Set the working directory
 WORKDIR /app
 
-# Install necessary system packages (e.g., git, gcc, libgomp for some libraries)
+# Install necessary system packages
 RUN apt-get update && apt-get install -y \
     git \
     gcc \
@@ -26,5 +24,5 @@ RUN pip install mlflow
 # Copy the application code
 COPY . /app
 
-# Command to run the application using Uvicorn
+# Command to run the application using Uvicorn (API için port 8000)
 CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]

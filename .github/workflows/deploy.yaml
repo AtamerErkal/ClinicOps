@@ -119,7 +119,7 @@ jobs:
             --os-type Linux \
             --restart-policy Always \
             --location ${{ env.LOCATION }} \
-            --environment-variables MLFLOW_RUN_ID=${{ needs.full-mlops-workflow.outputs.run_id }}
+            --environment-variables MLFLOW_RUN_ID=${{ needs.full-mlops-workflow.outputs.run_id }} AZURE_STORAGE_ACCOUNT=${{ env.STORAGE_ACCOUNT }} AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }} AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }} RG_NAME=${{ env.RG_NAME }} LOCATION=${{ env.LOCATION }}
 
           # Delete old API containers
           ACTIVE=$ACI_NAME

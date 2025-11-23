@@ -8,6 +8,7 @@ from azure.storage.blob import BlobClient, ContainerClient
 from mlflow import artifacts
 import logging
 
+
 logging.getLogger("azure").setLevel(logging.WARNING)
 
 # Dinamik experiment
@@ -77,6 +78,7 @@ def train_and_log_model():
 
     logging.info("✅ Model uploaded successfully.")
     logging.info(f"Run ID: {run_id}")
+    print(f"Run ID: {run_id}")
     return run_id
 
 if __name__ == "__main__":

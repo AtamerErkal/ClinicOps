@@ -8,6 +8,7 @@ from azure.storage.blob import BlobClient
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.containerinstance import ContainerInstanceManagementClient
 from pydantic import BaseModel
+import time
 
 logging.basicConfig(level=logging.INFO)
 
@@ -72,11 +73,15 @@ def load_model():
     model_uri = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/models/{run_id}/model"
     MODEL_URI = model_uri
     logging.info(f"Loading model from {model_uri}")
-    try:
-        model = mlflow.pyfunc.load_model(model_uri)
-        logging.info("✅ Model loaded successfully!")
-    except Exception as e:
-        logging.error(f"Model load failed: {e}")
+    for attempt in range(5):  # 5 kez dene
+        try:
+            model = mlflow.pyfunc.load_model(model_uri)
+            logging.info("✅ Model loaded successfully!")
+            return
+        except Exception as e:
+            logging.error(f"Model load attempt {attempt+1} failed: {e}")
+            time.sleep(30)  # 30s bekle (network/Blob gecikmesi için)
+    logging.error("Model load failed after 5 attempts")
 
 # --- FastAPI App ---
 app = FastAPI(version="1.0.0")
@@ -132,7 +137,8 @@ def predict(data: PatientData):
     if model is None:
         raise HTTPException(503, "Model not loaded")
     try:
-        rf_model = model._model_impl.python_model.model
+        # Sklearn wrapper için doğru erişim
+        rf_model = model._model_impl.sklearn_model  # Düzeltme: python_model yerine sklearn_model
         expected_cols = rf_model.feature_names_in_  # Eğitilmiş kolonlar
 
         input_dict = data.model_dump()
@@ -155,9 +161,10 @@ def predict(data: PatientData):
         # Train kolonlarına align et (eksik 0)
         df_final = df_encoded.reindex(columns=expected_cols, fill_value=0)
 
-        pred = model.predict(df_final)
+        pred = model.predict(df_final)  # Model pyfunc.predict kullan (sklearn değil)
         return {"predicted_length_of_stay": round(float(pred[0]), 2)}
     except Exception as e:
+        logging.error(f"Predict error: {str(e)}")  # Detay log
         raise HTTPException(500, detail=str(e))
 
 @app.get("/health")
