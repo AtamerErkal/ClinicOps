@@ -7,7 +7,8 @@ on:
 
 env:
   RG_NAME: ClinicOps-RG
-  LOCATION: westeurope
+  # ⚠️ KRİTİK: Storage ile aynı region kullan!
+  LOCATION: germanywestcentral  # Germany West ile uyumlu
   STORAGE_ACCOUNT: clinicopsdvcstorage2025
   CONTAINER_NAME: clinicops-dvc
   ACR_LOGIN_SERVER: ${{ secrets.AZURE_CR_LOGIN_SERVER }}
@@ -38,7 +39,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install dvc[azure] azure-storage-blob mlflow scikit-learn pandas
 
       - name: Azure Login
         uses: azure/login@v2
@@ -65,8 +65,40 @@ jobs:
           AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
         run: |
           python scripts/data_processing.py
-          # RUN_ID'yi temizle: Sadece "Run ID:" içeren satırı al, ID'yi extract et
-          RUN_ID=$(python scripts/train.py 2>&1 | grep "Run ID:" | tail -1 | sed 's/.*Run ID: //')
+          
+          # Run training and capture ALL output
+          echo "🚀 Starting model training..."
+          python scripts/train.py > train_output.txt 2>&1
+          
+          # Show output for debugging
+          echo "=== Training Output ==="
+          cat train_output.txt
+          echo "======================="
+          
+          # Extract Run ID - multiple fallback patterns
+          RUN_ID=$(grep "Run ID:" train_output.txt | tail -1 | sed 's/.*Run ID: //' | tr -d '[:space:]')
+          
+          # Fallback 1: Try UUID pattern
+          if [ -z "$RUN_ID" ]; then
+            echo "⚠️ First pattern failed, trying UUID pattern..."
+            RUN_ID=$(grep -oE '[a-f0-9]{32}' train_output.txt | tail -1)
+          fi
+          
+          # Fallback 2: Try MLflow run_id pattern
+          if [ -z "$RUN_ID" ]; then
+            echo "⚠️ UUID failed, trying 'run_id=' pattern..."
+            RUN_ID=$(grep -i "run_id" train_output.txt | grep -oE '[a-f0-9]{32}' | tail -1)
+          fi
+          
+          # Verify we got something
+          if [ -z "$RUN_ID" ]; then
+            echo "❌ ERROR: Could not extract Run ID!"
+            echo "Full training output:"
+            cat train_output.txt
+            exit 1
+          fi
+          
+          echo "✅ Extracted Run ID: $RUN_ID"
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
 
   deploy-api-to-aci:
@@ -82,6 +114,23 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Verify Run ID
+        run: |
+          RUN_ID="${{ needs.full-mlops-workflow.outputs.run_id }}"
+          echo "📦 Run ID from training: $RUN_ID"
+          
+          if [ -z "$RUN_ID" ]; then
+            echo "❌ ERROR: Run ID is empty!"
+            exit 1
+          fi
+          
+          # Validate format (32 hex chars)
+          if ! echo "$RUN_ID" | grep -qE '^[a-f0-9]{32}$'; then
+            echo "⚠️ WARNING: Run ID format looks unusual: $RUN_ID"
+          else
+            echo "✅ Run ID format validated"
+          fi
+
       - name: Docker Login
         uses: docker/login-action@v3
         with:
@@ -95,59 +144,112 @@ jobs:
         run: |
           NEW_TAG=$(date +'%Y%m%d%H%M%S')
           IMAGE_NAME=${{ env.ACR_LOGIN_SERVER }}/clinicops-api:$NEW_TAG
+          
+          echo "🐳 Building API image: $IMAGE_NAME"
           docker build -t $IMAGE_NAME -f Dockerfile .
           docker push $IMAGE_NAME
+          
           echo "NEW_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_OUTPUT
 
-      # --- DEPLOY NEW ACI API & DELETE OLD ---
+      # --- DELETE OLD API CONTAINERS FIRST ---
+      - name: Delete Old API Containers
+        run: |
+          echo "🗑️ Cleaning up old API containers..."
+          for ACI in $(az container list -g ${{ env.RG_NAME }} --query "[?starts_with(name, '${{ env.ACI_API_PREFIX }}-')].name" -o tsv); do
+            echo "Deleting: $ACI"
+            az container delete -g ${{ env.RG_NAME }} -n $ACI --yes || echo "Failed to delete $ACI"
+          done
+
+      # --- DEPLOY NEW ACI API ---
       - name: Deploy API to ACI
         run: |
           NEW_TAG="${{ steps.build_and_push.outputs.NEW_TAG }}"
           ACI_NAME="${{ env.ACI_API_PREFIX }}-${NEW_TAG}"
-          echo "Deploying container: $ACI_NAME"
-                az container create \
-                  --resource-group ${{ env.RG_NAME }} \
-                  --name $ACI_NAME \
-                  --image ${{ steps.build_and_push.outputs.IMAGE_NAME }} \
-                  --dns-name-label $ACI_NAME \
-                  --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
-                  --registry-username ${{ env.ACR_USERNAME }} \
-                  --registry-password ${{ env.ACR_PASSWORD }} \
-                  --ports 8000 \
-                  --cpu 1 \
-                  --memory 1.5 \
-                  --os-type=Linux \
-                  --restart-policy Always \
-                  --location ${{ env.LOCATION }} \
-                  --environment-variables \
-                    MLFLOW_RUN_ID=${{ needs.full-mlops-workflow.outputs.run_id }} \
-                    AZURE_STORAGE_ACCOUNT=${{ env.STORAGE_ACCOUNT }} \
-                    AZURE_STORAGE_CONNECTION_STRING=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }} \
-                    AZURE_STORAGE_KEY=${{ secrets.AZURE_STORAGE_KEY }} \
-                    AZURE_SUBSCRIPTION_ID=${{ secrets.AZURE_SUBSCRIPTION_ID }} \
-                    CONTAINER_NAME=${{ env.CONTAINER_NAME }} \
-                    RG_NAME=${{ env.RG_NAME }} \
-                    LOCATION=${{ env.LOCATION }}
-      
-                # Delete old API containers
-                ACTIVE=$ACI_NAME
-                for ACI in $(az container list -g ${{ env.RG_NAME }} --query "[].name" -o tsv); do
-                  if [ "$ACI" != "$ACTIVE" ] && [[ "$ACI" == "${{ env.ACI_API_PREFIX }}-"* ]]; then
-                    echo "Deleting old API: $ACI"
-                    az container delete -g ${{ env.RG_NAME }} -n $ACI --yes
-                  fi
-                done
+          RUN_ID="${{ needs.full-mlops-workflow.outputs.run_id }}"
+          
+          echo "🚀 Deploying API container: $ACI_NAME"
+          echo "📦 Using Model Run ID: $RUN_ID"
+          echo "🌍 Location: ${{ env.LOCATION }}"
+          
+          az container create \
+            --resource-group ${{ env.RG_NAME }} \
+            --name $ACI_NAME \
+            --image ${{ steps.build_and_push.outputs.IMAGE_NAME }} \
+            --dns-name-label $ACI_NAME \
+            --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ env.ACR_USERNAME }} \
+            --registry-password ${{ env.ACR_PASSWORD }} \
+            --ports 8000 \
+            --cpu 1 \
+            --memory 2 \
+            --os-type Linux \
+            --restart-policy Always \
+            --location ${{ env.LOCATION }} \
+            --environment-variables \
+              MLFLOW_RUN_ID="$RUN_ID" \
+              AZURE_STORAGE_ACCOUNT="${{ env.STORAGE_ACCOUNT }}" \
+              AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
+              AZURE_SUBSCRIPTION_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+              CONTAINER_NAME="${{ env.CONTAINER_NAME }}" \
+              RG_NAME="${{ env.RG_NAME }}" \
+              LOCATION="${{ env.LOCATION }}"
+          
+          echo "✅ API deployed successfully"
+          
+          # Wait for container to be ready
+          echo "⏳ Waiting for container to start..."
+          sleep 30
+          
+          # Get FQDN and test health endpoint
+          FQDN=$(az container show -g ${{ env.RG_NAME }} -n $ACI_NAME --query ipAddress.fqdn -o tsv)
+          echo "🌐 API URL: http://${FQDN}:8000"
+          
+          # Test health endpoint (with retry)
+          for i in {1..5}; do
+            echo "Health check attempt $i/5..."
+            if curl -f "http://${FQDN}:8000/health" 2>/dev/null; then
+              echo "✅ API is healthy!"
+              break
+            else
+              echo "⚠️ Health check failed, retrying in 15s..."
+              sleep 15
+            fi
+          done
 
-# --- DEPLOY STREAMLIT UI ---
-      - name: Build & Deploy Streamlit UI
+      # --- BUILD & DEPLOY UI ---
+      - name: Build and Push UI Docker Image
+        id: build_ui
         run: |
           NEW_TAG="${{ steps.build_and_push.outputs.NEW_TAG }}"
           UI_IMAGE=${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:$NEW_TAG
-          cd app && docker build -t $UI_IMAGE .
-          cd .. && docker push $UI_IMAGE
-          ACI_FQDN="${{ env.ACI_API_PREFIX }}-${NEW_TAG}.${{ env.LOCATION }}.azurecontainer.io"
-          # ACI create (os-type explicit = ile, hata handling)
+          
+          echo "🐳 Building UI image: $UI_IMAGE"
+          cd app
+          docker build -t $UI_IMAGE -f Dockerfile .
+          cd ..
+          docker push $UI_IMAGE
+          
+          echo "UI_IMAGE=$UI_IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Delete Old UI Container
+        run: |
+          echo "🗑️ Deleting old UI container..."
+          az container delete \
+            -g ${{ env.RG_NAME }} \
+            -n ${{ env.ACI_UI_NAME }} \
+            --yes || echo "No existing UI to delete"
+
+      - name: Deploy UI to ACI
+        run: |
+          NEW_TAG="${{ steps.build_and_push.outputs.NEW_TAG }}"
+          UI_IMAGE="${{ steps.build_ui.outputs.UI_IMAGE }}"
+          API_FQDN="${{ env.ACI_API_PREFIX }}-${NEW_TAG}.${{ env.LOCATION }}.azurecontainer.io"
+          
+          echo "🚀 Deploying UI container"
+          echo "🔗 API URL: http://${API_FQDN}:8000"
+          
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name ${{ env.ACI_UI_NAME }} \
@@ -159,8 +261,18 @@ jobs:
             --ports 8501 \
             --cpu 1 \
             --memory 1.5 \
-            --os-type=Linux \
+            --os-type Linux \
             --restart-policy Always \
             --location ${{ env.LOCATION }} \
-            --environment-variables CLINICOPS_API_URL=http://${ACI_FQDN}:8000 \
-            || echo "Create failed, trying restart..." && az container restart -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} || echo "Restart also failed - check logs"
+            --environment-variables CLINICOPS_API_URL="http://${API_FQDN}:8000"
+          
+          # Get UI FQDN
+          UI_FQDN=$(az container show -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} --query ipAddress.fqdn -o tsv)
+          
+          echo ""
+          echo "=========================================="
+          echo "✅ DEPLOYMENT COMPLETE!"
+          echo "=========================================="
+          echo "🌐 API:  http://${API_FQDN}:8000/health"
+          echo "🌐 UI:   http://${UI_FQDN}:8501"
+          echo "=========================================="
