@@ -55,7 +55,7 @@ jobs:
           dvc remote modify myremote account_name $AZURE_STORAGE_ACCOUNT
           dvc pull -v
 
-      # --- DATA PROCESSING + TRAIN ---
+            # --- DATA PROCESSING + TRAIN ---
       - name: Run Data Processing and Train Model
         id: train
         env:
@@ -65,39 +65,36 @@ jobs:
           AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
         run: |
           python scripts/data_processing.py
-          
           # Run training and capture ALL output
           echo "🚀 Starting model training..."
           python scripts/train.py > train_output.txt 2>&1
-          
           # Show output for debugging
           echo "=== Training Output ==="
           cat train_output.txt
           echo "======================="
-          
           # Extract Run ID - multiple fallback patterns
           RUN_ID=$(grep "Run ID:" train_output.txt | tail -1 | sed 's/.*Run ID: //' | tr -d '[:space:]')
-          
-          # Fallback 1: Try UUID pattern
+          # Fallback 1: Try UUID pattern (32 hex chars)
           if [ -z "$RUN_ID" ]; then
             echo "⚠️ First pattern failed, trying UUID pattern..."
             RUN_ID=$(grep -oE '[a-f0-9]{32}' train_output.txt | tail -1)
           fi
-          
           # Fallback 2: Try MLflow run_id pattern
           if [ -z "$RUN_ID" ]; then
             echo "⚠️ UUID failed, trying 'run_id=' pattern..."
             RUN_ID=$(grep -i "run_id" train_output.txt | grep -oE '[a-f0-9]{32}' | tail -1)
           fi
-          
+          # Fallback 3: Try any 32-char hex string
+          if [ -z "$RUN_ID" ]; then
+            echo "⚠️ All patterns failed, trying any 32-hex..."
+            RUN_ID=$(grep -oE '[a-f0-9]{32}' train_output.txt | head -1)
+          fi
           # Verify we got something
           if [ -z "$RUN_ID" ]; then
-            echo "❌ ERROR: Could not extract Run ID!"
-            echo "Full training output:"
-            cat train_output.txt
-            exit 1
+            echo "❌ ERROR: Could not extract Run ID! Check train.py output above."
+            echo "MLFLOW_RUN_ID=fallback_error" >> $GITHUB_OUTPUT
+            exit 1  # Fail if no ID (model yok)
           fi
-          
           echo "✅ Extracted Run ID: $RUN_ID"
           echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
 
