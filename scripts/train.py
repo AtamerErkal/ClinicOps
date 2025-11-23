@@ -18,7 +18,6 @@ TEST_PATH = os.path.join('data', 'processed', 'test.csv')
 print("Starting train.py – Connection string:", "SET" if AZURE_STORAGE_CONNECTION_STRING else "MISSING")
 
 def upload_directory_to_blob(local_path, blob_prefix):
-    """Upload entire directory to Azure Blob Storage"""
     try:
         container = ContainerClient.from_connection_string(
             AZURE_STORAGE_CONNECTION_STRING,
@@ -28,7 +27,6 @@ def upload_directory_to_blob(local_path, blob_prefix):
         for root, dirs, files in os.walk(local_path):
             for file in files:
                 file_path = os.path.join(root, file)
-                # Relative path from local_path
                 relative_path = os.path.relpath(file_path, local_path)
                 blob_path = f"{blob_prefix}/{relative_path}".replace("\\", "/")
                 
@@ -45,7 +43,6 @@ def upload_directory_to_blob(local_path, blob_prefix):
         raise
 
 def upload_latest_run_id(run_id):
-    """Upload run ID to blob for API to fetch"""
     try:
         blob_client = BlobClient.from_connection_string(
             AZURE_STORAGE_CONNECTION_STRING,
@@ -62,46 +59,38 @@ def train_and_log_model():
     try:
         logging.info("🚀 Starting model training...")
         
-        # MLflow setup
         mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "file:./mlruns")
         mlflow.set_tracking_uri(mlflow_tracking_uri)
         mlflow.set_experiment(EXPERIMENT_NAME)
 
-        # Load data
         train_df = pd.read_csv(TRAIN_PATH)
         test_df = pd.read_csv(TEST_PATH)
         logging.info(f"Data loaded: train={train_df.shape}, test={test_df.shape}")
 
-        # Preprocessing: One-hot encoding
         train_df = pd.get_dummies(train_df, drop_first=True)
         test_df = pd.get_dummies(test_df, drop_first=True)
         test_df = test_df.reindex(columns=train_df.columns, fill_value=0)
 
-        # Split features and target
         X_train = train_df.drop('lengthofstay', axis=1)
         y_train = train_df['lengthofstay']
         X_test = test_df.drop('lengthofstay', axis=1)
         y_test = test_df['lengthofstay']
 
-        # Train model
         logging.info("Training Random Forest model...")
         model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
         model.fit(X_train, y_train)
         logging.info("✅ Model training complete")
 
-        # MLflow logging
         with mlflow.start_run() as run:
             run_id = run.info.run_id
             
-            # Log model with input example
             input_example = X_train.iloc[:1]
             mlflow.sklearn.log_model(
                 sk_model=model,
-                artifact_path="model",  # This creates /model subfolder
+                artifact_path="model",
                 input_example=input_example
             )
             
-            # Log metrics
             train_score = model.score(X_train, y_train)
             test_score = model.score(X_test, y_test)
             mlflow.log_metric("train_r2", train_score)
@@ -110,7 +99,6 @@ def train_and_log_model():
             logging.info(f"MLflow Run ID: {run_id}")
             logging.info(f"Train R²: {train_score:.4f}, Test R²: {test_score:.4f}")
 
-        # Download artifacts from MLflow
         logging.info("Downloading MLflow artifacts...")
         local_model_path = mlflow.artifacts.download_artifacts(
             run_id=run_id, 
@@ -118,15 +106,12 @@ def train_and_log_model():
         )
         logging.info(f"Local model path: {local_model_path}")
 
-        # Upload to Azure Blob
         logging.info("Uploading model to Azure Blob Storage...")
         blob_prefix = f"models/{run_id}/model"
         upload_directory_to_blob(local_model_path, blob_prefix)
         
-        # Upload run ID
         upload_latest_run_id(run_id)
 
-        # Print for GitHub Actions to capture
         print(f"Run ID: {run_id}")
         
         return run_id
@@ -140,7 +125,7 @@ def train_and_log_model():
 if __name__ == "__main__":
     try:
         run_id = train_and_log_model()
-        print(run_id)  # Final output for grep
+        print(run_id)
     except Exception as e:
         logging.error(f"❌ Main error: {e}")
         exit(1)

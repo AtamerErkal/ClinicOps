@@ -25,9 +25,9 @@ LOCATION = os.getenv("LOCATION", "westeurope")
 model = None
 MODEL_URI = None
 RUN_ID = os.getenv("MLFLOW_RUN_ID")
+expected_features = None
 
 def get_latest_run_id():
-    """Fetch latest run ID from Azure Blob"""
     try:
         if AZURE_CONN_STRING:
             blob_client = BlobClient.from_connection_string(
@@ -44,18 +44,13 @@ def get_latest_run_id():
             )
         
         run_id = blob_client.download_blob().readall().decode("utf-8").strip()
-        logging.info(f"✅ Latest Run ID from blob: {run_id}")
+        logging.info(f"✅ Latest Run ID: {run_id}")
         return run_id
     except Exception as e:
-        logging.error(f"❌ Failed to fetch run ID from blob: {e}")
-        # Fallback to environment variable
-        if RUN_ID:
-            logging.info(f"Using RUN_ID from env: {RUN_ID}")
-            return RUN_ID
-        return None
+        logging.error(f"❌ Failed to fetch run ID: {e}")
+        return RUN_ID or None
 
 def delete_old_aci_instances():
-    """Delete old ACI instances to save costs"""
     try:
         credential = DefaultAzureCredential()
         subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
@@ -74,45 +69,45 @@ def delete_old_aci_instances():
         logging.error(f"ACI cleanup failed: {e}")
 
 def load_model():
-    """Load model from Azure Blob Storage via MLflow"""
-    global model, MODEL_URI
+    global model, MODEL_URI, expected_features
     
     run_id = get_latest_run_id()
     if not run_id:
         logging.error("❌ No Run ID found!")
         return
 
-    # Construct wasbs URI - CRITICAL: must match upload path
     model_uri = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/models/{run_id}/model"
     MODEL_URI = model_uri
     
-    logging.info(f"🔄 Attempting to load model from: {model_uri}")
-    
-    # Configure Azure credentials for MLflow
+    logging.info(f"🔄 Loading model from: {model_uri}")
     os.environ["AZURE_STORAGE_CONNECTION_STRING"] = AZURE_CONN_STRING
     
-    # Retry logic for network delays
     max_retries = 5
     for attempt in range(max_retries):
         try:
-            logging.info(f"Load attempt {attempt + 1}/{max_retries}...")
+            logging.info(f"Attempt {attempt + 1}/{max_retries}...")
             model = mlflow.pyfunc.load_model(model_uri)
             logging.info("✅ Model loaded successfully!")
             
-            # Verify model type
-            logging.info(f"Model type: {type(model)}")
+            # Cache expected features
+            if hasattr(model, '_model_impl'):
+                sklearn_model = model._model_impl.python_model
+                if hasattr(sklearn_model, 'model'):
+                    expected_features = list(sklearn_model.model.feature_names_in_)
+                elif hasattr(sklearn_model, 'feature_names_in_'):
+                    expected_features = list(sklearn_model.feature_names_in_)
+            
+            if expected_features:
+                logging.info(f"✅ Model expects {len(expected_features)} features")
             return
             
         except Exception as e:
             logging.error(f"❌ Attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
-                wait_time = 30 * (attempt + 1)  # Exponential backoff
-                logging.info(f"Waiting {wait_time}s before retry...")
-                time.sleep(wait_time)
+                time.sleep(30 * (attempt + 1))
             else:
-                logging.error("❌ Model load failed after all retries")
+                logging.error("❌ Model load failed")
 
-# FastAPI App
 app = FastAPI(title="ClinicOps API", version="1.0.0")
 
 @app.on_event("startup")
@@ -121,8 +116,9 @@ def startup_event():
     delete_old_aci_instances()
     load_model()
 
-# Pydantic schema
+# Pydantic schema - accept both string and numeric values
 class PatientData(BaseModel):
+    # Numeric features
     hematocrit: float
     neutrophils: float
     sodium: float
@@ -132,22 +128,26 @@ class PatientData(BaseModel):
     bmi: float
     pulse: float
     respiration: float
-    rcount: str
-    gender: str
-    dialysisrenalendstage: str
-    asthma: str
-    irondef: str
-    pneum: str
-    substancedependence: str
-    psychologicaldisordermajor: str
-    depress: str
-    psychother: str
-    fibrosisandother: str
-    malnutrition: str
-    hemo: str
-    secondarydiagnosisnonicd9: str
-    discharged: str
-    facid: str
+    
+    # String features
+    rcount: str  # "0", "1", "2", "3", "4", "5+"
+    gender: str  # "M", "F"
+    discharged: str  # "A", "B", "C", "D"
+    
+    # Binary features (0 or 1 as integers)
+    dialysisrenalendstage: int  # 0 or 1
+    asthma: int  # 0 or 1
+    irondef: int  # 0 or 1
+    pneum: int  # 0 or 1
+    substancedependence: int  # 0 or 1
+    psychologicaldisordermajor: int  # 0 or 1
+    depress: int  # 0 or 1
+    psychother: int  # 0 or 1
+    fibrosisandother: int  # 0 or 1
+    malnutrition: int  # 0 or 1
+    hemo: int  # 0 or 1
+    secondarydiagnosisnonicd9: int  # 0 or 1
+    facid: int  # 0, 1, 2, 3, 4, etc.
 
 @app.get("/health")
 def health():
@@ -155,43 +155,9 @@ def health():
         "status": "ok",
         "model_loaded": model is not None,
         "model_uri": MODEL_URI,
-        "run_id": RUN_ID
+        "run_id": RUN_ID,
+        "expected_features": len(expected_features) if expected_features else None
     }
-
-@app.get("/feature_importance")
-def feature_importance():
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    
-    try:
-        # Access underlying sklearn model
-        # MLflow pyfunc wraps the model, need to unwrap it
-        if hasattr(model, '_model_impl'):
-            sklearn_model = model._model_impl.python_model
-            if hasattr(sklearn_model, 'model'):
-                rf_model = sklearn_model.model
-            else:
-                rf_model = sklearn_model
-        else:
-            raise Exception("Cannot access underlying model")
-        
-        # Get feature importances
-        importances = rf_model.feature_importances_
-        feature_names = rf_model.feature_names_in_
-        
-        # Sort by importance
-        feature_importance_dict = dict(zip(feature_names, importances))
-        sorted_features = dict(sorted(
-            feature_importance_dict.items(), 
-            key=lambda x: x[1], 
-            reverse=True
-        ))
-        
-        return sorted_features
-        
-    except Exception as e:
-        logging.error(f"Feature importance error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict")
 def predict(data: PatientData):
@@ -203,53 +169,167 @@ def predict(data: PatientData):
         input_dict = data.model_dump()
         df = pd.DataFrame([input_dict])
         
-        # Apply same preprocessing as training
-        # 1. Label encode specific columns (if they weren't one-hot encoded)
-        label_mappings = {
-            'rcount': {'0': 0, '1': 1, '2': 2, '3': 3, '4': 4, '5+': 5},
-            'gender': {'M': 0, 'F': 1},
-            'discharged': {'A': 0, 'B': 1, 'C': 2, 'D': 3},
-            'facid': {'0': 0, '1': 1, '2': 2, '3': 3, '4': 4}
-        }
+        logging.info(f"📥 Input shape: {df.shape}, columns: {df.columns.tolist()}")
         
-        for col, mapping in label_mappings.items():
-            if col in df.columns:
-                df[col] = df[col].map(mapping).fillna(0).astype(int)
+        # CRITICAL: Apply EXACT same preprocessing as train.py
+        # train.py does: pd.get_dummies(train_df, drop_first=True)
+        # We must do exactly the same
         
-        # 2. One-hot encode remaining categorical columns
         df_encoded = pd.get_dummies(df, drop_first=True)
         
-        # 3. Get expected features from model
-        if hasattr(model, '_model_impl'):
-            sklearn_model = model._model_impl.python_model
-            if hasattr(sklearn_model, 'model'):
-                expected_features = sklearn_model.model.feature_names_in_
+        logging.info(f"🔄 After encoding: {df_encoded.shape}")
+        logging.info(f"Encoded columns: {df_encoded.columns.tolist()}")
+        
+        # Get expected features
+        if expected_features is None:
+            if hasattr(model, '_model_impl'):
+                sklearn_model = model._model_impl.python_model
+                if hasattr(sklearn_model, 'model'):
+                    model_features = list(sklearn_model.model.feature_names_in_)
+                elif hasattr(sklearn_model, 'feature_names_in_'):
+                    model_features = list(sklearn_model.feature_names_in_)
+                else:
+                    raise Exception("Cannot access model features")
             else:
-                expected_features = sklearn_model.feature_names_in_
+                raise Exception("Cannot access model implementation")
         else:
-            raise Exception("Cannot access model features")
+            model_features = expected_features
         
-        # 4. Align columns with training data
-        df_final = df_encoded.reindex(columns=expected_features, fill_value=0)
+        logging.info(f"🎯 Model expects {len(model_features)} features")
         
-        # 5. Predict using MLflow pyfunc wrapper
+        # Debug: Show first 10 expected vs actual
+        logging.info(f"Expected (first 10): {model_features[:10]}")
+        logging.info(f"Actual (first 10): {df_encoded.columns.tolist()[:10]}")
+        
+        # Find missing and extra columns
+        missing_cols = set(model_features) - set(df_encoded.columns)
+        extra_cols = set(df_encoded.columns) - set(model_features)
+        
+        if missing_cols:
+            logging.warning(f"⚠️ Missing {len(missing_cols)} columns: {list(missing_cols)[:5]}...")
+        if extra_cols:
+            logging.warning(f"⚠️ Extra {len(extra_cols)} columns: {list(extra_cols)[:5]}...")
+        
+        # Align columns with model (add missing with 0, remove extra)
+        df_final = df_encoded.reindex(columns=model_features, fill_value=0)
+        
+        logging.info(f"✅ Final shape: {df_final.shape}")
+        
+        # Verify no NaN
+        if df_final.isnull().any().any():
+            nan_cols = df_final.columns[df_final.isnull().any()].tolist()
+            raise ValueError(f"NaN values in: {nan_cols}")
+        
+        # Predict
         prediction = model.predict(df_final)
+        
+        logging.info(f"✅ Prediction: {prediction[0]}")
         
         return {
             "predicted_length_of_stay": round(float(prediction[0]), 2),
-            "input_features_count": len(df_final.columns)
+            "debug": {
+                "input_features": df.shape[1],
+                "encoded_features": df_encoded.shape[1],
+                "model_features": len(model_features),
+                "missing_features": len(missing_cols),
+                "extra_features": len(extra_cols)
+            }
         }
         
     except Exception as e:
-        logging.error(f"Prediction error: {e}")
+        logging.error(f"❌ Prediction failed: {e}")
         import traceback
-        logging.error(traceback.format_exc())
+        error_trace = traceback.format_exc()
+        logging.error(error_trace)
+        
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": str(e),
+                "type": type(e).__name__,
+                "trace_preview": error_trace.split('\n')[-5:]
+            }
+        )
+
+@app.get("/feature_importance")
+def feature_importance():
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    try:
+        if hasattr(model, '_model_impl'):
+            sklearn_model = model._model_impl.python_model
+            if hasattr(sklearn_model, 'model'):
+                rf_model = sklearn_model.model
+            else:
+                rf_model = sklearn_model
+        else:
+            raise Exception("Cannot access model")
+        
+        importances = rf_model.feature_importances_
+        feature_names = rf_model.feature_names_in_
+        
+        feature_dict = dict(zip(feature_names, importances))
+        sorted_features = dict(sorted(
+            feature_dict.items(),
+            key=lambda x: x[1],
+            reverse=True
+        ))
+        
+        return {
+            "total_features": len(feature_names),
+            "top_10": dict(list(sorted_features.items())[:10]),
+            "all_features": sorted_features
+        }
+        
+    except Exception as e:
+        logging.error(f"Feature importance error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/debug/expected_features")
+def debug_features():
+    """Return expected feature names"""
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    
+    try:
+        if expected_features:
+            features = expected_features
+        elif hasattr(model, '_model_impl'):
+            sklearn_model = model._model_impl.python_model
+            if hasattr(sklearn_model, 'model'):
+                features = list(sklearn_model.model.feature_names_in_)
+            else:
+                features = list(sklearn_model.feature_names_in_)
+        else:
+            raise Exception("Cannot access features")
+        
+        return {
+            "count": len(features),
+            "features": features,
+            "sample_row_format": {
+                "hematocrit": "float",
+                "neutrophils": "float",
+                "gender": "string (e.g., 'M' or 'F')",
+                "asthma": "string (e.g., 'Yes' or 'No')",
+                "note": "Categorical values will be one-hot encoded automatically"
+            }
+        }
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def root():
     return {
-        "message": "ClinicOps API is running",
-        "endpoints": ["/health", "/predict", "/feature_importance"],
-        "model_status": "loaded" if model else "not loaded"
+        "service": "ClinicOps Prediction API",
+        "version": "1.0.0",
+        "status": "running",
+        "model_loaded": model is not None,
+        "endpoints": {
+            "health": "GET /health",
+            "predict": "POST /predict",
+            "feature_importance": "GET /feature_importance",
+            "debug_features": "GET /debug/expected_features",
+            "docs": "GET /docs"
+        }
     }

@@ -19,7 +19,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # CRITICAL: Ensure Azure MLflow support is installed
-# This is needed to load models from wasbs:// URIs
 RUN pip install --no-cache-dir \
     mlflow[azure] \
     azure-storage-blob \
