@@ -71,6 +71,11 @@ def train_and_log_model():
         train_df = pd.read_csv(TRAIN_PATH)
         test_df = pd.read_csv(TEST_PATH)
         logging.info(f"Data loaded: train={train_df.shape}, test={test_df.shape}")
+        drop_cols = ['eid', 'vdate']
+        
+        # Sütunlar varsa düşür (errors='ignore' hata vermesini engeller)
+        train_df = train_df.drop(columns=drop_cols, errors='ignore')
+        test_df = test_df.drop(columns=drop_cols, errors='ignore')
 
         # Düzeltme: Sadece categorical kolonlara get_dummies uygula (dummy explosion önle)
         cat_cols = ["rcount", "gender", "dialysisrenalendstage", "asthma", "irondef", "pneum", "substancedependence", "psychologicaldisordermajor", "depress", "psychother", "fibrosisandother", "malnutrition", "hemo", "secondarydiagnosisnonicd9", "discharged", "facid"]
