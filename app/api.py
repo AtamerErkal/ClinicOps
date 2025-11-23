@@ -89,16 +89,28 @@ def load_model():
             model = mlflow.pyfunc.load_model(model_uri)
             logging.info("✅ Model loaded successfully!")
             
-            # Cache expected features
-            if hasattr(model, '_model_impl'):
-                sklearn_model = model._model_impl.python_model
-                if hasattr(sklearn_model, 'model'):
-                    expected_features = list(sklearn_model.model.feature_names_in_)
-                elif hasattr(sklearn_model, 'feature_names_in_'):
-                    expected_features = list(sklearn_model.feature_names_in_)
+            # Extract features - try multiple approaches
+            try:
+                # Approach 1: Direct sklearn model access
+                underlying_model = model._model_impl.sklearn_model
+                expected_features = list(underlying_model.feature_names_in_)
+                logging.info(f"✅ Got features via sklearn_model: {len(expected_features)}")
+            except:
+                try:
+                    # Approach 2: Python model wrapper
+                    underlying_model = model._model_impl.python_model
+                    expected_features = list(underlying_model.feature_names_in_)
+                    logging.info(f"✅ Got features via python_model: {len(expected_features)}")
+                except:
+                    try:
+                        # Approach 3: Nested model attribute
+                        underlying_model = model._model_impl.python_model.model
+                        expected_features = list(underlying_model.feature_names_in_)
+                        logging.info(f"✅ Got features via nested model: {len(expected_features)}")
+                    except Exception as e:
+                        logging.warning(f"⚠️ Could not extract features: {e}")
+                        expected_features = None
             
-            if expected_features:
-                logging.info(f"✅ Model expects {len(expected_features)} features")
             return
             
         except Exception as e:
@@ -118,7 +130,7 @@ def startup_event():
 
 # Pydantic schema - accept both string and numeric values
 class PatientData(BaseModel):
-    # Numeric features
+    # Numeric features (all float for flexibility)
     hematocrit: float
     neutrophils: float
     sodium: float
@@ -134,20 +146,24 @@ class PatientData(BaseModel):
     gender: str  # "M", "F"
     discharged: str  # "A", "B", "C", "D"
     
-    # Binary features (0 or 1 as integers)
-    dialysisrenalendstage: int  # 0 or 1
-    asthma: int  # 0 or 1
-    irondef: int  # 0 or 1
-    pneum: int  # 0 or 1
-    substancedependence: int  # 0 or 1
-    psychologicaldisordermajor: int  # 0 or 1
-    depress: int  # 0 or 1
-    psychother: int  # 0 or 1
-    fibrosisandother: int  # 0 or 1
-    malnutrition: int  # 0 or 1
-    hemo: int  # 0 or 1
-    secondarydiagnosisnonicd9: int  # 0 or 1
-    facid: int  # 0, 1, 2, 3, 4, etc.
+    # Binary features (accept both int and str, convert to int)
+    dialysisrenalendstage: int
+    asthma: int
+    irondef: int
+    pneum: int
+    substancedependence: int
+    psychologicaldisordermajor: int
+    depress: int
+    psychother: int
+    fibrosisandother: int
+    malnutrition: int
+    hemo: int
+    secondarydiagnosisnonicd9: int
+    facid: int
+    
+    class Config:
+        # Allow extra fields (for future compatibility)
+        extra = "ignore"
 
 @app.get("/health")
 def health():
