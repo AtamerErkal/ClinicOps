@@ -128,8 +128,9 @@ def startup_event():
     delete_old_aci_instances()
     load_model()
 
-# --- Schema ---
+# Pydantic schema - accept both string and numeric values
 class PatientData(BaseModel):
+    # Numeric features (all float for flexibility)
     hematocrit: float
     neutrophils: float
     sodium: float
@@ -139,22 +140,26 @@ class PatientData(BaseModel):
     bmi: float
     pulse: float
     respiration: float
-    rcount: str
-    gender: str
-    dialysisrenalendstage: str  # Düzeltme: str (No/Yes)
-    asthma: str  # Düzeltme: str
-    irondef: str  # Düzeltme: str
-    pneum: str  # Düzeltme: str
-    substancedependence: str  # Düzeltme: str
-    psychologicaldisordermajor: str  # Düzeltme: str
-    depress: str  # Düzeltme: str
-    psychother: str  # Düzeltme: str
-    fibrosisandother: str  # Düzeltme: str
-    malnutrition: str  # Düzeltme: str
-    hemo: str  # Düzeltme: str
-    secondarydiagnosisnonicd9: str  # Düzeltme: str
-    discharged: str
-    facid: str
+    
+    # String features
+    rcount: str  # "0", "1", "2", "3", "4", "5+"
+    gender: str  # "M", "F"
+    discharged: str  # "A", "B", "C", "D"
+    
+    # Binary features (accept both int and str, convert to int)
+    dialysisrenalendstage: int
+    asthma: int
+    irondef: int
+    pneum: int
+    substancedependence: int
+    psychologicaldisordermajor: int
+    depress: int
+    psychother: int
+    fibrosisandother: int
+    malnutrition: int
+    hemo: int
+    secondarydiagnosisnonicd9: int
+    facid: int
     
     class Config:
         # Allow extra fields (for future compatibility)
