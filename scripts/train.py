@@ -72,12 +72,23 @@ def train_and_log_model():
         test_df = pd.read_csv(TEST_PATH)
         logging.info(f"Data loaded: train={train_df.shape}, test={test_df.shape}")
 
-        # Preprocessing: One-hot encoding
-        train_df = pd.get_dummies(train_df, drop_first=True)
-        test_df = pd.get_dummies(test_df, drop_first=True)
-        test_df = test_df.reindex(columns=train_df.columns, fill_value=0)
+        cat_cols = ["rcount", "gender", "dialysisrenalendstage", "asthma", "irondef", "pneum", "substancedependence", "psychologicaldisordermajor", "depress", "psychother", "fibrosisandother", "malnutrition", "hemo", "secondarydiagnosisnonicd9", "discharged", "facid"]  # 16 categorical
+        numeric_target_cols = [col for col in train_df.columns if col not in cat_cols]  # Numeric + target ('lengthofstay' dahil)
 
-        # Split features and target
+        # Categorical'leri dummies
+        train_dummies = pd.get_dummies(train_df[cat_cols], drop_first=True)
+        test_dummies = pd.get_dummies(test_df[cat_cols], drop_first=True)
+        
+        # Test dummies'i train'e align et (eksik 0)
+        test_dummies = test_dummies.reindex(columns=train_dummies.columns, fill_value=0)
+        
+        # Numeric + target kolonları koru + dummies birleştir
+        train_df = pd.concat([train_df[numeric_target_cols], train_dummies], axis=1)
+        test_df = pd.concat([test_df[numeric_target_cols], test_dummies], axis=1)
+        
+        logging.info(f"Features after dummies: {train_df.shape[1]}")  
+
+        # Split features and target (target artık var)
         X_train = train_df.drop('lengthofstay', axis=1)
         y_train = train_df['lengthofstay']
         X_test = test_df.drop('lengthofstay', axis=1)
