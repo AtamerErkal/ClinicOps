@@ -68,12 +68,21 @@ def train_and_log_model():
         mlflow.set_experiment(EXPERIMENT_NAME)
 
         # Load data
-        train_df = pd.read_csv(TRAIN_PATH)
-        test_df = pd.read_csv(TEST_PATH)
+        logging.info("Loading train/test with robust parser...")
+        train_df = pd.read_csv(TRAIN_PATH, low_memory=False, dtype=str)  # Initial str load (parse hatası önle)
+        test_df = pd.read_csv(TEST_PATH, low_memory=False, dtype=str)
         logging.info(f"Data loaded: train={train_df.shape}, test={test_df.shape}")
 
-        cat_cols = ["rcount", "gender", "dialysisrenalendstage", "asthma", "irondef", "pneum", "substancedependence", "psychologicaldisordermajor", "depress", "psychother", "fibrosisandother", "malnutrition", "hemo", "secondarydiagnosisnonicd9", "discharged", "facid"]  # 16 categorical
-        numeric_target_cols = [col for col in train_df.columns if col not in cat_cols]  # Numeric + target ('lengthofstay' dahil)
+        # Düzeltme: Sadece categorical kolonlara get_dummies uygula (dummy explosion önle)
+        cat_cols = ["rcount", "gender", "dialysisrenalendstage", "asthma", "irondef", "pneum", "substancedependence", "psychologicaldisordermajor", "depress", "psychother", "fibrosisandother", "malnutrition", "hemo", "secondarydiagnosisnonicd9", "facid"]  # 16 categorical (lengthofstay hariç)
+        # Explicit target koru
+        target_col = 'lengthofstay'
+        # Numeric kolonlar (target hariç)
+        numeric_cols = [col for col in train_df.columns if col not in cat_cols + [target_col]]  # Numeric (eid, vdate vb. dahil)
+
+        # Target'ı koru (ayrı)
+        train_target = train_df[target_col]
+        test_target = test_df[target_col]
 
         # Categorical'leri dummies
         train_dummies = pd.get_dummies(train_df[cat_cols], drop_first=True)
@@ -82,17 +91,22 @@ def train_and_log_model():
         # Test dummies'i train'e align et (eksik 0)
         test_dummies = test_dummies.reindex(columns=train_dummies.columns, fill_value=0)
         
-        # Numeric + target kolonları koru + dummies birleştir
-        train_df = pd.concat([train_df[numeric_target_cols], train_dummies], axis=1)
-        test_df = pd.concat([test_df[numeric_target_cols], test_dummies], axis=1)
+        # Numeric + dummies birleştir (target ayrı)
+        train_df = pd.concat([train_df[numeric_cols], train_dummies], axis=1)
+        test_df = pd.concat([test_df[numeric_cols], test_dummies], axis=1)
         
-        logging.info(f"Features after dummies: {train_df.shape[1]}")  
+        # Target'ı df'ye ekle (son kolon)
+        train_df[target_col] = train_target
+        test_df[target_col] = test_target
+        
+        logging.info(f"Features after dummies (with target): {train_df.shape[1]}")  # Debug: ~27 bekle
+        logging.info(f"Columns: {list(train_df.columns)}")  # Kolon listesi (lengthofstay son mu?)
 
         # Split features and target (target artık var)
-        X_train = train_df.drop('lengthofstay', axis=1)
-        y_train = train_df['lengthofstay']
-        X_test = test_df.drop('lengthofstay', axis=1)
-        y_test = test_df['lengthofstay']
+        X_train = train_df.drop(target_col, axis=1)
+        y_train = train_df[target_col]
+        X_test = test_df.drop(target_col, axis=1)
+        y_test = test_df[target_col]
 
         # Train model
         logging.info("Training Random Forest model...")
@@ -147,7 +161,7 @@ def train_and_log_model():
         import traceback
         traceback.print_exc()
         raise
-    
+
 # Crash hook: Tüm exception'ları stdout'a yaz
 import sys
 def crash_handler(type, value, tb):

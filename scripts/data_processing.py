@@ -13,10 +13,15 @@ TEST_PATH = os.path.join(PROCESSED_DIR, "test.csv")
 
 
 def process_data(test_size=0.2, random_state=42):
-    """Load raw CSV, split, and save train/test CSVs (preprocessing in train.py)."""
+    """Load raw CSV, drop unnecessary columns, split, and save train/test CSVs."""
     logging.info(f"Starting data processing. Loading data from {RAW_PATH}...")
 
     df = pd.read_csv(RAW_PATH)
+    
+    # Düzeltme: Gereksiz kolonları drop et (eid, vdate, discharged – tarih/ID, LoS tahmini için gereksiz)
+    unnecessary_cols = ['eid', 'vdate', 'discharged']  # Explicit list
+    df = df.drop([col for col in unnecessary_cols if col in df.columns], axis=1, errors='ignore')
+    logging.info(f"Dropped unnecessary columns: {unnecessary_cols}. New shape: {df.shape}")
 
     # Split into train/test
     train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
