@@ -78,9 +78,8 @@ def train_and_log_model():
         # Explicit target koru
         target_col = 'lengthofstay'
         # Numeric kolonlar (target hariç)
-        numeric_cols = [col for col in train_df.columns if col not in cat_cols + [target_col]]  # Numeric (eid, vdate vb. dahil)
+        numeric_cols = ['hematocrit', 'neutrophils', 'sodium', 'glucose', 'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']
 
-        # Target'ı koru (ayrı)
         train_target = train_df[target_col]
         test_target = test_df[target_col]
 
