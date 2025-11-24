@@ -79,7 +79,7 @@ def load_model():
     model_uri = f"wasbs://{CONTAINER_NAME}@{AZURE_ACCOUNT}.blob.core.windows.net/models/{run_id}/model"
     MODEL_URI = model_uri
     
-    logging.info(f"🔄 Loading model from: {model_uri}")
+    logging.info(f"📥 Loading model from: {model_uri}")
     os.environ["AZURE_STORAGE_CONNECTION_STRING"] = AZURE_CONN_STRING
     
     max_retries = 5
@@ -144,7 +144,6 @@ class PatientData(BaseModel):
     # String features
     rcount: str  # "0", "1", "2", "3", "4", "5+"
     gender: str  # "M", "F"
-    discharged: str  # "A", "B", "C", "D"
     
     # Binary features (accept both int and str, convert to int)
     dialysisrenalendstage: int
