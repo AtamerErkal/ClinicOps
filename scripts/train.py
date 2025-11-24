@@ -69,16 +69,18 @@ def train_and_log_model():
 
         # Load data
         logging.info("Loading train/test with robust parser...")
-        train_df = pd.read_csv(TRAIN_PATH, low_memory=False, dtype=str)  # Initial str load (parse hatası önle)
+        train_df = pd.read_csv(TRAIN_PATH, low_memory=False, dtype=str)
         test_df = pd.read_csv(TEST_PATH, low_memory=False, dtype=str)
         logging.info(f"Data loaded: train={train_df.shape}, test={test_df.shape}")
 
-        # Düzeltme: Sadece categorical kolonlara get_dummies uygula (dummy explosion önle)
-        cat_cols = ["rcount", "gender", "dialysisrenalendstage", "asthma", "irondef", "pneum", "substancedependence", "psychologicaldisordermajor", "depress", "psychother", "fibrosisandother", "malnutrition", "hemo", "secondarydiagnosisnonicd9", "facid"]  # 16 categorical (lengthofstay hariç)
-        # Explicit target koru
+        # Define feature types explicitly
+        cat_cols = ["rcount", "gender", "dialysisrenalendstage", "asthma", "irondef", 
+                   "pneum", "substancedependence", "psychologicaldisordermajor", "depress", 
+                   "psychother", "fibrosisandother", "malnutrition", "hemo", 
+                   "secondarydiagnosisnonicd9", "facid"]
         target_col = 'lengthofstay'
-        # Numeric kolonlar (target hariç)
-        numeric_cols = ['hematocrit', 'neutrophils', 'sodium', 'glucose', 'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']
+        numeric_cols = ['hematocrit', 'neutrophils', 'sodium', 'glucose', 'bloodureanitro', 
+                       'creatinine', 'bmi', 'pulse', 'respiration']
 
         logging.info("Enforcing float dtype for numeric features...")
         for col in numeric_cols:
@@ -87,32 +89,25 @@ def train_and_log_model():
             if col in test_df.columns:
                 test_df[col] = pd.to_numeric(test_df[col], errors='coerce').astype(float)
 
-        train_target = train_df[target_col]
-        test_target = test_df[target_col]
+        # Extract target
+        train_target = pd.to_numeric(train_df[target_col], errors='coerce').astype(float)
+        test_target = pd.to_numeric(test_df[target_col], errors='coerce').astype(float)
 
-        # Categorical'leri dummies
-        train_dummies = pd.get_dummies(train_df[cat_cols], drop_first=True)
-        test_dummies = pd.get_dummies(test_df[cat_cols], drop_first=True)
+        # One-hot encode ONLY categorical columns (this is the fix!)
+        train_dummies = pd.get_dummies(train_df[cat_cols], drop_first=True, dtype=int)
+        test_dummies = pd.get_dummies(test_df[cat_cols], drop_first=True, dtype=int)
         
-        # Test dummies'i train'e align et (eksik 0)
+        # Align test dummies to train columns
         test_dummies = test_dummies.reindex(columns=train_dummies.columns, fill_value=0)
         
-        # Numeric + dummies birleştir (target ayrı)
-        train_df = pd.concat([train_df[numeric_cols], train_dummies], axis=1)
-        test_df = pd.concat([test_df[numeric_cols], test_dummies], axis=1)
+        # Combine numeric + dummies
+        X_train = pd.concat([train_df[numeric_cols], train_dummies], axis=1)
+        X_test = pd.concat([test_df[numeric_cols], test_dummies], axis=1)
+        y_train = train_target
+        y_test = test_target
         
-        # Target'ı df'ye ekle (son kolon)
-        train_df[target_col] = train_target
-        test_df[target_col] = test_target
-        
-        logging.info(f"Features after dummies (with target): {train_df.shape[1]}")  # Debug: ~27 bekle
-        logging.info(f"Columns: {list(train_df.columns)}")  # Kolon listesi (lengthofstay son mu?)
-
-        # Split features and target (target artık var)
-        X_train = train_df.drop(target_col, axis=1)
-        y_train = train_df[target_col]
-        X_test = test_df.drop(target_col, axis=1)
-        y_test = test_df[target_col]
+        logging.info(f"Final feature shape: {X_train.shape}")
+        logging.info(f"Feature columns: {list(X_train.columns)}")
 
         # Train model
         logging.info("Training Random Forest model...")
@@ -124,16 +119,22 @@ def train_and_log_model():
         with mlflow.start_run() as run:
             run_id = run.info.run_id
             
-            # Log model with input example
+            # Create input example with correct dtypes
             input_example = X_train.iloc[:1].copy()
-            numeric_cols = ['hematocrit', 'neutrophils', 'sodium', 'glucose', 'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']
+            
+            # Numeric columns stay float
+            for col in numeric_cols:
+                if col in input_example.columns:
+                    input_example[col] = input_example[col].astype(float)
+            
+            # One-hot encoded columns should be bool
             ohe_cols = [col for col in input_example.columns if col not in numeric_cols]
-    
-            input_example[ohe_cols] = input_example[ohe_cols].astype(bool)
+            for col in ohe_cols:
+                input_example[col] = input_example[col].astype(bool)
         
             mlflow.sklearn.log_model(
                 sk_model=model,
-                artifact_path="model",  # This creates /model subfolder
+                artifact_path="model",
                 input_example=input_example
             )
             
@@ -173,7 +174,7 @@ def train_and_log_model():
         traceback.print_exc()
         raise
 
-# Crash hook: Tüm exception'ları stdout'a yaz
+# Crash hook
 import sys
 def crash_handler(type, value, tb):
     import traceback
@@ -186,7 +187,7 @@ sys.excepthook = crash_handler
 if __name__ == "__main__":
     try:
         run_id = train_and_log_model()
-        print(run_id)  # Final output for grep
+        print(run_id)
     except Exception as e:
         logging.error(f"❌ Main error: {e}")
         exit(1)

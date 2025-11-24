@@ -187,13 +187,24 @@ def predict(data: PatientData):
         logging.info(f"📥 Input shape: {df.shape}, columns: {df.columns.tolist()}")
         
         # CRITICAL: Apply EXACT same preprocessing as train.py
-        # train.py does: pd.get_dummies(train_df, drop_first=True)
-        # We must do exactly the same
+        # Separate numeric and categorical
+        numeric_cols = ['hematocrit', 'neutrophils', 'sodium', 'glucose', 
+                       'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']
+        cat_cols = ['rcount', 'gender', 'dialysisrenalendstage', 'asthma', 
+                   'irondef', 'pneum', 'substancedependence', 
+                   'psychologicaldisordermajor', 'depress', 'psychother', 
+                   'fibrosisandother', 'malnutrition', 'hemo', 
+                   'secondarydiagnosisnonicd9', 'facid']
         
-        df_encoded = pd.get_dummies(df, drop_first=True)
+        # One-hot encode ONLY categorical columns
+        df_cat = df[cat_cols]
+        df_encoded = pd.get_dummies(df_cat, drop_first=True, dtype=int)
         
-        logging.info(f"🔄 After encoding: {df_encoded.shape}")
-        logging.info(f"Encoded columns: {df_encoded.columns.tolist()}")
+        # Add numeric columns
+        df_final_temp = pd.concat([df[numeric_cols].astype(float), df_encoded], axis=1)
+        
+        logging.info(f"🔄 After encoding: {df_final_temp.shape}")
+        logging.info(f"Encoded columns: {df_final_temp.columns.tolist()}")
         
         # Get expected features
         if expected_features is None:
@@ -226,7 +237,7 @@ def predict(data: PatientData):
             logging.warning(f"⚠️ Extra {len(extra_cols)} columns: {list(extra_cols)[:5]}...")
         
         # Align columns with model (add missing with 0, remove extra)
-        df_final = df_encoded.reindex(columns=model_features, fill_value=0)
+        df_final = df_final_temp.reindex(columns=model_features, fill_value=0)
         
         # CRITICAL: Convert dummy columns to bool (MLflow expects boolean, not int64)
         for col in df_final.columns:
@@ -235,6 +246,10 @@ def predict(data: PatientData):
                 df_final[col] = df_final[col].astype(bool)
         
         logging.info(f"✅ Final shape: {df_final.shape}")
+        
+        # DEBUG: Log first row values
+        logging.info(f"🔍 First 5 feature values: {df_final.iloc[0, :5].tolist()}")
+        logging.info(f"🔍 Non-zero features: {(df_final.iloc[0] != 0).sum()}")
         
         # Verify no NaN
         if df_final.isnull().any().any():
