@@ -80,6 +80,13 @@ def train_and_log_model():
         # Numeric kolonlar (target hariç)
         numeric_cols = ['hematocrit', 'neutrophils', 'sodium', 'glucose', 'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']
 
+        logging.info("Enforcing float dtype for numeric features...")
+        for col in numeric_cols:
+            if col in train_df.columns:
+                train_df[col] = pd.to_numeric(train_df[col], errors='coerce').astype(float)
+            if col in test_df.columns:
+                test_df[col] = pd.to_numeric(test_df[col], errors='coerce').astype(float)
+
         train_target = train_df[target_col]
         test_target = test_df[target_col]
 
