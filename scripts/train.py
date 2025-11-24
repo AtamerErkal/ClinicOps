@@ -125,7 +125,12 @@ def train_and_log_model():
             run_id = run.info.run_id
             
             # Log model with input example
-            input_example = X_train.iloc[:1]
+            input_example = X_train.iloc[:1].copy()
+            numeric_cols = ['hematocrit', 'neutrophils', 'sodium', 'glucose', 'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']
+            ohe_cols = [col for col in input_example.columns if col not in numeric_cols]
+    
+            input_example[ohe_cols] = input_example[ohe_cols].astype(bool)
+        
             mlflow.sklearn.log_model(
                 sk_model=model,
                 artifact_path="model",  # This creates /model subfolder
