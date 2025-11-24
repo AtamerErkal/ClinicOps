@@ -147,6 +147,16 @@ def train_and_log_model():
         import traceback
         traceback.print_exc()
         raise
+    
+# Crash hook: Tüm exception'ları stdout'a yaz
+import sys
+def crash_handler(type, value, tb):
+    import traceback
+    print(f"CRASH: {type.__name__}: {value}")
+    traceback.print_exception(type, value, tb)
+    sys.__excepthook__(type, value, tb)
+
+sys.excepthook = crash_handler
 
 if __name__ == "__main__":
     try:
