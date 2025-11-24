@@ -144,7 +144,6 @@ class PatientData(BaseModel):
     # String features
     rcount: str  # "0", "1", "2", "3", "4", "5+"
     gender: str  # "M", "F"
-    discharged: str  # "A", "B", "C", "D"
     
     # Binary features (accept both int and str, convert to int)
     dialysisrenalendstage: int
