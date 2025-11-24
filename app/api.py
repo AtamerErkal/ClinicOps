@@ -144,6 +144,7 @@ class PatientData(BaseModel):
     # String features
     rcount: str  # "0", "1", "2", "3", "4", "5+"
     gender: str  # "M", "F"
+    discharged: str  # "A", "B", "C", "D"
     
     # Binary features (accept both int and str, convert to int)
     dialysisrenalendstage: int
@@ -227,6 +228,12 @@ def predict(data: PatientData):
         
         # Align columns with model (add missing with 0, remove extra)
         df_final = df_encoded.reindex(columns=model_features, fill_value=0)
+        
+        # CRITICAL: Convert dummy columns to bool (MLflow expects boolean, not int64)
+        for col in df_final.columns:
+            if col not in ['hematocrit', 'neutrophils', 'sodium', 'glucose', 
+                          'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']:
+                df_final[col] = df_final[col].astype(bool)
         
         logging.info(f"✅ Final shape: {df_final.shape}")
         
