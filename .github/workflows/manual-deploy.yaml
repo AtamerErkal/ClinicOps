@@ -1,0 +1,285 @@
+name: Manual Deploy/Destroy ClinicOps
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Choose action'
+        required: true
+        type: choice
+        options:
+          - deploy
+          - destroy
+
+env:
+  RG_NAME: ClinicOps-RG
+  LOCATION: germanywestcentral
+  STORAGE_ACCOUNT: clinicopsdvcstorage2025
+  CONTAINER_NAME: clinicops-dvc
+  ACR_LOGIN_SERVER: ${{ secrets.AZURE_CR_LOGIN_SERVER }}
+  ACR_USERNAME: ${{ secrets.AZURE_CR_USERNAME }}
+  ACR_PASSWORD: ${{ secrets.AZURE_CR_PASSWORD }}
+  ACI_API_PREFIX: clinicops-api
+  ACI_UI_NAME: clinicops-ui
+  AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+
+jobs:
+  # ========================================
+  # DEPLOY JOB - Container'ları Oluştur
+  # ========================================
+  deploy:
+    if: github.event.inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    outputs:
+      run_id: ${{ steps.train.outputs.MLFLOW_RUN_ID }}
+      
+    steps:
+      - name: 🚀 Starting Deployment
+        run: |
+          echo "============================================"
+          echo "🚀 DEPLOYING CLINICOPS"
+          echo "============================================"
+          echo "Action: Deploy"
+          echo "Region: ${{ env.LOCATION }}"
+          echo "============================================"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: DVC Pull Data
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+        run: |
+          dvc remote add -d myremote azure://${{ env.CONTAINER_NAME }}/data || true
+          dvc remote modify myremote account_name $AZURE_STORAGE_ACCOUNT
+          dvc pull -v
+
+      - name: Run Data Processing and Train Model
+        id: train
+        env:
+          PYTHONPATH: .
+          AZURE_STORAGE_ACCOUNT: ${{ env.STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+        run: |
+          python scripts/data_processing.py
+          export PYTHONVERBOSE=1
+          echo "🚀 Starting model training..."
+          python -v scripts/train.py > train_output.txt 2>&1 || echo "Training exited with code $?" >> train_output.txt
+          echo "=== Training Output ==="
+          cat train_output.txt
+          echo "======================="
+          RUN_ID=$(grep "Run ID:" train_output.txt | tail -1 | sed 's/.*Run ID: //' | tr -d '[:space:]')
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(grep -oE '[a-f0-9]{32}' train_output.txt | tail -1)
+          fi
+          if [ -z "$RUN_ID" ]; then
+            echo "❌ ERROR: No Run ID!"
+            echo "MLFLOW_RUN_ID=crash_no_id" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Run ID: $RUN_ID"
+            echo "MLFLOW_RUN_ID=$RUN_ID" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Docker Login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_LOGIN_SERVER }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ env.ACR_PASSWORD }}
+
+      - name: Build and Push API Docker Image
+        id: build_api
+        run: |
+          NEW_TAG=$(date +'%Y%m%d%H%M%S')
+          IMAGE_NAME=${{ env.ACR_LOGIN_SERVER }}/clinicops-api:$NEW_TAG
+          
+          echo "🐳 Building API image: $IMAGE_NAME"
+          docker build -t $IMAGE_NAME -f Dockerfile .
+          docker push $IMAGE_NAME
+          
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Deploy API to ACI
+        run: |
+          NEW_TAG="${{ steps.build_api.outputs.NEW_TAG }}"
+          ACI_NAME="${{ env.ACI_API_PREFIX }}-${NEW_TAG}"
+          RUN_ID="${{ steps.train.outputs.MLFLOW_RUN_ID }}"
+          
+          echo "🚀 Deploying API: $ACI_NAME"
+          
+          az container create \
+            --resource-group ${{ env.RG_NAME }} \
+            --name $ACI_NAME \
+            --image ${{ steps.build_api.outputs.IMAGE_NAME }} \
+            --dns-name-label $ACI_NAME \
+            --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ env.ACR_USERNAME }} \
+            --registry-password ${{ env.ACR_PASSWORD }} \
+            --ports 8000 \
+            --cpu 1 \
+            --memory 2 \
+            --os-type Linux \
+            --restart-policy Always \
+            --location ${{ env.LOCATION }} \
+            --environment-variables \
+              MLFLOW_RUN_ID="$RUN_ID" \
+              AZURE_STORAGE_ACCOUNT="${{ env.STORAGE_ACCOUNT }}" \
+              AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
+              AZURE_SUBSCRIPTION_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+              CONTAINER_NAME="${{ env.CONTAINER_NAME }}" \
+              RG_NAME="${{ env.RG_NAME }}" \
+              LOCATION="${{ env.LOCATION }}"
+          
+          echo "✅ API deployed successfully"
+          
+          FQDN=$(az container show -g ${{ env.RG_NAME }} -n $ACI_NAME --query ipAddress.fqdn -o tsv)
+          echo "🌐 API URL: http://${FQDN}:8000"
+
+      - name: Build and Push UI Docker Image
+        id: build_ui
+        run: |
+          NEW_TAG="${{ steps.build_api.outputs.NEW_TAG }}"
+          UI_IMAGE=${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:$NEW_TAG
+          
+          echo "🐳 Building UI image: $UI_IMAGE"
+          cd app
+          docker build -t $UI_IMAGE -f Dockerfile .
+          cd ..
+          docker push $UI_IMAGE
+          
+          echo "UI_IMAGE=$UI_IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Deploy UI to ACI
+        run: |
+          NEW_TAG="${{ steps.build_api.outputs.NEW_TAG }}"
+          UI_IMAGE="${{ steps.build_ui.outputs.UI_IMAGE }}"
+          API_FQDN="${{ env.ACI_API_PREFIX }}-${NEW_TAG}.${{ env.LOCATION }}.azurecontainer.io"
+          
+          echo "🚀 Deploying UI"
+          
+          az container create \
+            --resource-group ${{ env.RG_NAME }} \
+            --name ${{ env.ACI_UI_NAME }} \
+            --image $UI_IMAGE \
+            --dns-name-label ${{ env.ACI_UI_NAME }}-${NEW_TAG} \
+            --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ env.ACR_USERNAME }} \
+            --registry-password ${{ env.ACR_PASSWORD }} \
+            --ports 8501 \
+            --cpu 1 \
+            --memory 1.5 \
+            --os-type Linux \
+            --restart-policy Always \
+            --location ${{ env.LOCATION }} \
+            --environment-variables CLINICOPS_API_URL="http://${API_FQDN}:8000"
+          
+          UI_FQDN=$(az container show -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} --query ipAddress.fqdn -o tsv)
+          
+          echo ""
+          echo "=========================================="
+          echo "✅ DEPLOYMENT COMPLETE!"
+          echo "=========================================="
+          echo "🌐 API:  http://${API_FQDN}:8000/health"
+          echo "🌐 UI:   http://${UI_FQDN}:8501"
+          echo "=========================================="
+          echo "💰 Cost: ~€0.83/hour (~€20/month if running 24/7)"
+          echo "🗑️  To stop billing: Run 'destroy' action"
+          echo "=========================================="
+
+  # ========================================
+  # DESTROY JOB - Container'ları Sil
+  # ========================================
+  destroy:
+    if: github.event.inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🗑️  Starting Destruction
+        run: |
+          echo "============================================"
+          echo "🗑️  DESTROYING CLINICOPS CONTAINERS"
+          echo "============================================"
+          echo "Action: Destroy"
+          echo "This will delete all containers and STOP billing"
+          echo "============================================"
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: List Current Containers
+        run: |
+          echo "📋 Current containers:"
+          az container list -g ${{ env.RG_NAME }} --query "[].{Name:name, State:instanceView.state, IP:ipAddress.ip}" -o table || echo "No containers found"
+
+      - name: Delete API Containers
+        run: |
+          echo "🗑️  Deleting API containers..."
+          API_CONTAINERS=$(az container list -g ${{ env.RG_NAME }} --query "[?starts_with(name, '${{ env.ACI_API_PREFIX }}-')].name" -o tsv)
+          
+          if [ -z "$API_CONTAINERS" ]; then
+            echo "ℹ️  No API containers found"
+          else
+            for ACI in $API_CONTAINERS; do
+              echo "Deleting: $ACI"
+              az container delete -g ${{ env.RG_NAME }} -n $ACI --yes || echo "⚠️  Failed to delete $ACI"
+            done
+            echo "✅ API containers deleted"
+          fi
+
+      - name: Delete UI Container
+        run: |
+          echo "🗑️  Deleting UI container..."
+          az container delete -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} --yes 2>/dev/null && echo "✅ UI container deleted" || echo "ℹ️  No UI container found"
+
+      - name: Verify Deletion
+        run: |
+          echo ""
+          echo "📋 Remaining containers:"
+          REMAINING=$(az container list -g ${{ env.RG_NAME }} --query "[].name" -o tsv)
+          
+          if [ -z "$REMAINING" ]; then
+            echo "✅ All containers deleted successfully!"
+          else
+            echo "⚠️  Some containers remain:"
+            az container list -g ${{ env.RG_NAME }} --query "[].{Name:name, State:instanceView.state}" -o table
+          fi
+
+      - name: 🎉 Destruction Complete
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "✅ DESTRUCTION COMPLETE!"
+          echo "=========================================="
+          echo "💰 Billing Status: STOPPED (€0/hour)"
+          echo "📦 Your model and data remain in:"
+          echo "   - Azure Blob Storage (~€0.10/month)"
+          echo "   - Azure Container Registry (~€4/month)"
+          echo ""
+          echo "🚀 To redeploy:"
+          echo "   1. Go to Actions tab"
+          echo "   2. Run this workflow"
+          echo "   3. Select 'deploy'"
+          echo "=========================================="
