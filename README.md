@@ -303,8 +303,8 @@ curl http://clinicops-api-xxx.germanywestcentral.azurecontainer.io:8000/feature_
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/YOUR_USERNAME/KlinikOps.git
-cd KlinikOps
+git clone https://github.com/AtamerErkal/ClinicOps.git
+cd ClinicOps
 
 # 2. Create virtual environment
 python -m venv venv
@@ -384,7 +384,7 @@ AZURE_SUBSCRIPTION_ID
 ## 📁 Project Structure
 
 ```
-KlinikOps/
+ClinicOps/
 ├── .github/
 │   └── workflows/
 │       ├── deploy.yaml              # Auto deployment (push to main)
