@@ -12,9 +12,9 @@ on:
           - destroy
 
 env:
-  RG_NAME: ClinicOps-RG
+  RG_NAME: ClinicOps-RG-2025
   LOCATION: germanywestcentral
-  STORAGE_ACCOUNT: clinicopsdvcstorage2025
+  STORAGE_ACCOUNT: clinicops2025st
   CONTAINER_NAME: clinicops-dvc
   ACR_LOGIN_SERVER: ${{ secrets.AZURE_CR_LOGIN_SERVER }}
   ACR_USERNAME: ${{ secrets.AZURE_CR_USERNAME }}
