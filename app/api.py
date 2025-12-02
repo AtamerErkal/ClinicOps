@@ -195,6 +195,8 @@ def predict(data: PatientData):
                    'psychologicaldisordermajor', 'depress', 'psychother', 
                    'fibrosisandother', 'malnutrition', 'hemo', 
                    'secondarydiagnosisnonicd9', 'facid']
+
+        df[cat_cols] = df[cat_cols].astype(str)
         
         # One-hot encode ONLY categorical columns
         df_cat = df[cat_cols]

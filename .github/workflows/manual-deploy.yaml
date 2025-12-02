@@ -198,8 +198,7 @@ jobs:
             --os-type Linux \
             --restart-policy Always \
             --location ${{ env.LOCATION }} \
-            --environment-variables \
-              CLINICOPS_API_URL="http://${API_FQDN}:8000"
+            --environment-variables CLINICOPS_API_URL="http://${API_FQDN}:8000"
           
           UI_FQDN=$(az container show -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} --query ipAddress.fqdn -o tsv)
           

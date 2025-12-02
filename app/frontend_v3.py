@@ -108,10 +108,12 @@ if st.button("🚀 Predict Length of Stay"):
     for k, v in input_data.items():
         if k in NUMERIC_FEATURES:
             payload[k] = float(v)
-        elif k in ['rcount', 'gender']:
-            payload[k] = str(v)
         else:
-            payload[k] = int(v)
+            # All categoricals to str (safer for dummies in API)
+            if isinstance(v, (int, float)) and v in [0,1,2,3,4,5]:  # Binary/facility
+                payload[k] = str(int(v))
+            else:
+                payload[k] = str(v)
     
     try:
         response = requests.post(f"{API_URL}/predict", json=payload, timeout=10)
