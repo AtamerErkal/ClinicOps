@@ -3,6 +3,7 @@ import logging
 import mlflow
 import mlflow.pyfunc
 import pandas as pd
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from azure.storage.blob import BlobClient
 from azure.identity import DefaultAzureCredential
@@ -145,20 +146,22 @@ class PatientData(BaseModel):
     rcount: str  # "0", "1", "2", "3", "4", "5+"
     gender: str  # "M", "F"
     
-    # Binary features (accept both int and str, convert to int)
-    dialysisrenalendstage: int
-    asthma: int
-    irondef: int
-    pneum: int
-    substancedependence: int
-    psychologicaldisordermajor: int
-    depress: int
-    psychother: int
-    fibrosisandother: int
-    malnutrition: int
-    hemo: int
-    secondarydiagnosisnonicd9: int
-    facid: int
+    # Binary features (accept int/str, but cast to str in preprocessing)
+    dialysisrenalendstage: int | str = 0  # Allow both, default 0
+    asthma: int | str = 0
+    irondef: int | str = 0
+    pneum: int | str = 0
+    substancedependence: int | str = 0
+    psychologicaldisordermajor: int | str = 0
+    depress: int | str = 0
+    psychother: int | str = 0
+    fibrosisandother: int | str = 0
+    malnutrition: int | str = 0
+    hemo: int | str = 0
+    
+    # Categorical numeric-like (str for dummies)
+    secondarydiagnosisnonicd9: str = "0"  # "0" to "10", cast in preprocessing
+    facid: str = "A"  # "A", "B", "C", "D", "E"
     
     class Config:
         # Allow extra fields (for future compatibility)
@@ -187,28 +190,34 @@ def predict(data: PatientData):
         logging.info(f"📥 Input shape: {df.shape}, columns: {df.columns.tolist()}")
         
         # CRITICAL: Apply EXACT same preprocessing as train.py
-        # Separate numeric and categorical
         numeric_cols = ['hematocrit', 'neutrophils', 'sodium', 'glucose', 
-                       'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']
+                        'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']
         cat_cols = ['rcount', 'gender', 'dialysisrenalendstage', 'asthma', 
-                   'irondef', 'pneum', 'substancedependence', 
-                   'psychologicaldisordermajor', 'depress', 'psychother', 
-                   'fibrosisandother', 'malnutrition', 'hemo', 
-                   'secondarydiagnosisnonicd9', 'facid']
-
+                    'irondef', 'pneum', 'substancedependence', 
+                    'psychologicaldisordermajor', 'depress', 'psychother', 
+                    'fibrosisandother', 'malnutrition', 'hemo', 
+                    'secondarydiagnosisnonicd9', 'facid']
+    
+        # Cast ALL cat_cols to str (matches train.py dtype=str)
         df[cat_cols] = df[cat_cols].astype(str)
         
-        # One-hot encode ONLY categorical columns
+        # FIX: Calculate comorbidity_score (matches train.py – sum binary as float)
+        binary_cols = ['dialysisrenalendstage', 'asthma', 'irondef', 'pneum', 'substancedependence', 
+                    'psychologicaldisordermajor', 'depress', 'psychother', 'fibrosisandother', 
+                    'malnutrition', 'hemo']
+        df['comorbidity_score'] = df[binary_cols].apply(lambda row: sum(int(val) for val in row), axis=1).astype(float)
+        numeric_cols.append('comorbidity_score')  # Add to numeric list
+        
+        logging.info(f"Comorbidity score: {df['comorbidity_score'].iloc[0]}")  # Debug
+        
+        # One-hot encode categorical columns WITHOUT drop_first
         df_cat = df[cat_cols]
-        df_encoded = pd.get_dummies(df_cat, drop_first=True, dtype=int)
+        df_encoded_full = pd.get_dummies(df_cat, drop_first=False, dtype=int)
         
-        # Add numeric columns
-        df_final_temp = pd.concat([df[numeric_cols].astype(float), df_encoded], axis=1)
+        logging.info(f"🔄 Full encoded shape: {df_encoded_full.shape}")
+        logging.info(f"Full encoded columns sample: {df_encoded_full.columns.tolist()[:10]}")
         
-        logging.info(f"🔄 After encoding: {df_final_temp.shape}")
-        logging.info(f"Encoded columns: {df_final_temp.columns.tolist()}")
-        
-        # Get expected features
+        # Get expected features (mevcut)
         if expected_features is None:
             if hasattr(model, '_model_impl'):
                 sklearn_model = model._model_impl.python_model
@@ -224,30 +233,31 @@ def predict(data: PatientData):
             model_features = expected_features
         
         logging.info(f"🎯 Model expects {len(model_features)} features")
-        
-        # Debug: Show first 10 expected vs actual
         logging.info(f"Expected (first 10): {model_features[:10]}")
-        logging.info(f"Actual (first 10): {df_encoded.columns.tolist()[:10]}")
         
-        # Find missing and extra columns
-        missing_cols = set(model_features) - set(df_encoded.columns)
-        extra_cols = set(df_encoded.columns) - set(model_features)
+        # Extract expected dummy columns from model_features (exclude numerics)
+        dummy_cols = [col for col in model_features if col not in numeric_cols]
         
-        if missing_cols:
-            logging.warning(f"⚠️ Missing {len(missing_cols)} columns: {list(missing_cols)[:5]}...")
-        if extra_cols:
-            logging.warning(f"⚠️ Extra {len(extra_cols)} columns: {list(extra_cols)[:5]}...")
+        # Reindex to TRAIN's dummy columns (adds missing as 0, drops extra)
+        df_encoded = df_encoded_full.reindex(columns=dummy_cols, fill_value=0)
         
-        # Align columns with model (add missing with 0, remove extra)
-        df_final = df_final_temp.reindex(columns=model_features, fill_value=0)
+        logging.info(f"🔄 Reindexed dummies shape: {df_encoded.shape}")
+        logging.info(f"Reindexed dummy columns sample: {df_encoded.columns.tolist()[:10]}")
         
-        # CRITICAL: Convert dummy columns to bool (MLflow expects boolean, not int64)
-        for col in df_final.columns:
-            if col not in ['hematocrit', 'neutrophils', 'sodium', 'glucose', 
-                          'bloodureanitro', 'creatinine', 'bmi', 'pulse', 'respiration']:
-                df_final[col] = df_final[col].astype(bool)
+        # Combine numeric + aligned dummies
+        df_final_temp = pd.concat([df[numeric_cols].astype(float), df_encoded], axis=1)
+        
+        logging.info(f"🔄 Temp shape before full reindex: {df_final_temp.shape}")
+        
+        # Align FULL input to model_features (fill_value=0.0 for float safety)
+        df_final = df_final_temp.reindex(columns=model_features, fill_value=0.0)  # ← DEĞİŞİKLİK: 0.0 float
         
         logging.info(f"✅ Final shape: {df_final.shape}")
+        
+        # Convert dummy columns to bool (skip numerics including comorbidity)
+        for col in df_final.columns:
+            if col not in numeric_cols:
+                df_final[col] = df_final[col].astype(bool)
         
         # DEBUG: Log first row values
         logging.info(f"🔍 First 5 feature values: {df_final.iloc[0, :5].tolist()}")
@@ -258,36 +268,42 @@ def predict(data: PatientData):
             nan_cols = df_final.columns[df_final.isnull().any()].tolist()
             raise ValueError(f"NaN values in: {nan_cols}")
         
-        # Predict
-        prediction = model.predict(df_final)
+        # Predict (log scale)
+        prediction_log = model.predict(df_final)
         
-        logging.info(f"✅ Prediction: {prediction[0]}")
+        # Inverse transform to original scale
+        prediction = np.expm1(prediction_log)[0]
+        
+        logging.info(f"✅ Prediction (original): {prediction}")
         
         return {
-            "predicted_length_of_stay": round(float(prediction[0]), 2),
+            "predicted_length_of_stay": round(float(prediction), 2),
             "debug": {
-                "input_features": df.shape[1],
-                "encoded_features": df_encoded.shape[1],
-                "model_features": len(model_features),
-                "missing_features": len(missing_cols),
-                "extra_features": len(extra_cols)
+                "input_features": int(df.shape[1]),
+                "full_encoded_features": int(df_encoded_full.shape[1]),
+                "reindexed_dummies": int(df_encoded.shape[1]),
+                "model_features": int(len(model_features)),
+                "missing_features": int(len(set(model_features) - set(df_final_temp.columns))),
+                "extra_features": int(len(set(df_final_temp.columns) - set(model_features))),
+                "non_zero_dummies": int((df_encoded != 0).sum().sum()),
+                "comorbidity_score": float(df['comorbidity_score'].iloc[0])  # Debug
             }
         }
         
     except Exception as e:
-        logging.error(f"❌ Prediction failed: {e}")
-        import traceback
-        error_trace = traceback.format_exc()
-        logging.error(error_trace)
-        
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": str(e),
-                "type": type(e).__name__,
-                "trace_preview": error_trace.split('\n')[-5:]
-            }
-        )
+            logging.error(f"❌ Prediction failed: {e}")
+            import traceback
+            error_trace = traceback.format_exc()
+            logging.error(error_trace)
+            
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": str(e),
+                    "type": type(e).__name__,
+                    "trace_preview": error_trace.split('\n')[-5:]
+                }
+            )
 
 @app.get("/feature_importance")
 def feature_importance():

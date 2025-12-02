@@ -1,0 +1,6 @@
+[core]
+    remote = myremote
+['remote "myremote"']
+    url = azure://clinicops-dvc/data
+    account_name = clinicops2025st
+ 

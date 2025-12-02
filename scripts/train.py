@@ -1,7 +1,9 @@
 import mlflow
 import mlflow.sklearn
 import pandas as pd
+import numpy as np
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import r2_score
 import os
 from azure.storage.blob import BlobClient, ContainerClient
 import logging
@@ -93,25 +95,38 @@ def train_and_log_model():
         train_target = pd.to_numeric(train_df[target_col], errors='coerce').astype(float)
         test_target = pd.to_numeric(test_df[target_col], errors='coerce').astype(float)
 
-        # One-hot encode ONLY categorical columns (this is the fix!)
+        # FIX 1: Log transform target (skew + inverse bias fix)
+        train_target_log = np.log1p(train_target)
+        test_target_log = np.log1p(test_target)
+
+        # FIX 3: Comorbidity score (binary sum for positive effect)
+        binary_cols = ['dialysisrenalendstage', 'asthma', 'irondef', 'pneum', 'substancedependence', 
+                    'psychologicaldisordermajor', 'depress', 'psychother', 'fibrosisandother', 
+                    'malnutrition', 'hemo']
+        train_df['comorbidity_score'] = train_df[binary_cols].astype(int).sum(axis=1)
+        test_df['comorbidity_score'] = test_df[binary_cols].astype(int).sum(axis=1)
+        numeric_cols.append('comorbidity_score')  # Add to numeric
+
+        # One-hot encode ONLY categorical columns
         train_dummies = pd.get_dummies(train_df[cat_cols], drop_first=True, dtype=int)
         test_dummies = pd.get_dummies(test_df[cat_cols], drop_first=True, dtype=int)
-        
+                
         # Align test dummies to train columns
         test_dummies = test_dummies.reindex(columns=train_dummies.columns, fill_value=0)
-        
+                
         # Combine numeric + dummies
         X_train = pd.concat([train_df[numeric_cols], train_dummies], axis=1)
         X_test = pd.concat([test_df[numeric_cols], test_dummies], axis=1)
-        y_train = train_target
-        y_test = test_target
-        
+        y_train = train_target_log  # Log scale
+        y_test = test_target_log    # Log scale
+                
         logging.info(f"Final feature shape: {X_train.shape}")
         logging.info(f"Feature columns: {list(X_train.columns)}")
 
-        # Train model
+        # Train model (FIX 2: Regularization)
         logging.info("Training Random Forest model...")
-        model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+        model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1, 
+                                    max_depth=8, min_samples_leaf=10)
         model.fit(X_train, y_train)
         logging.info("✅ Model training complete")
 
@@ -119,33 +134,46 @@ def train_and_log_model():
         with mlflow.start_run() as run:
             run_id = run.info.run_id
             
-            # Create input example with correct dtypes
+            # Create input example (mevcut)
             input_example = X_train.iloc[:1].copy()
-            
             # Numeric columns stay float
             for col in numeric_cols:
                 if col in input_example.columns:
                     input_example[col] = input_example[col].astype(float)
-            
             # One-hot encoded columns should be bool
             ohe_cols = [col for col in input_example.columns if col not in numeric_cols]
             for col in ohe_cols:
                 input_example[col] = input_example[col].astype(bool)
-        
+            
             mlflow.sklearn.log_model(
                 sk_model=model,
                 artifact_path="model",
                 input_example=input_example
             )
+    
+            # Log metrics on log scale
+            train_score_log = model.score(X_train, y_train)
+            test_score_log = model.score(X_test, y_test)
+            mlflow.log_metric("train_r2_log", train_score_log)
+            mlflow.log_metric("test_r2_log", test_score_log)
             
-            # Log metrics
-            train_score = model.score(X_train, y_train)
-            test_score = model.score(X_test, y_test)
-            mlflow.log_metric("train_r2", train_score)
-            mlflow.log_metric("test_r2", test_score)
+            # FIX: Original scale metrics (predict inverse, then R²)
+            y_train_pred_log = model.predict(X_train)
+            y_test_pred_log = model.predict(X_test)
+            y_train_pred_orig = np.expm1(y_train_pred_log)
+            y_test_pred_orig = np.expm1(y_test_pred_log)
+            
+            # R² on original scale
+            from sklearn.metrics import r2_score  # ← EKLE (import üstte)
+            train_score_orig = r2_score(np.expm1(y_train), y_train_pred_orig)  # y_train log → expm1
+            test_score_orig = r2_score(np.expm1(y_test), y_test_pred_orig)
+            mlflow.log_metric("train_r2_original", train_score_orig)
+            mlflow.log_metric("test_r2_original", test_score_orig)
             
             logging.info(f"MLflow Run ID: {run_id}")
-            logging.info(f"Train R²: {train_score:.4f}, Test R²: {test_score:.4f}")
+            logging.info(f"Train R² (log): {train_score_log:.4f}, Test R² (log): {test_score_log:.4f}")
+            logging.info(f"Train R² (orig): {train_score_orig:.4f}, Test R² (orig): {test_score_orig:.4f}")
+
 
         # Download artifacts from MLflow
         logging.info("Downloading MLflow artifacts...")
