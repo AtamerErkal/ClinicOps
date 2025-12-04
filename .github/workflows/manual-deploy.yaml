@@ -183,13 +183,18 @@ jobs:
       - name: 13. Deploy UI to ACI
         run: |
           echo "Deploying UI"
-          API_FQDN="${{ env.ACI_API_PREFIX }}-${{ steps.tag.outputs.NEW_TAG }}.${{ env.LOCATION }}.azurecontainer.io"
+          
+          # NEW_TAG'i garanti al (steps.tag yoksa env'den fallback)
+          TAG=${{ steps.tag.outputs.NEW_TAG }}
+          [ -z "$TAG" ] && TAG=${{ env.NEW_TAG }}
+          
+          API_FQDN="clinicops-api-$TAG.${{ env.LOCATION }}.azurecontainer.io"
           
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name ${{ env.ACI_UI_NAME }} \
-            --image ${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:${{ steps.tag.outputs.NEW_TAG }} \
-            --dns-name-label clinicops-ui-${{ steps.tag.outputs.NEW_TAG }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:$TAG \
+            --dns-name-label clinicops-ui-$TAG \
             --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
             --registry-username ${{ env.ACR_USERNAME }} \
             --registry-password ${{ env.ACR_PASSWORD }} \
@@ -212,11 +217,7 @@ jobs:
           echo "DEPLOYMENT COMPLETE!"
           echo "=========================================="
           echo "API → http://$API_FQDN:8000/health"
-          echo "UI  → http://$UI_FQDN:7860   ← MOBİL DAHİL ÇALIŞIR"
-          echo "=========================================="
-          echo "Cost: ~€0.83/hour"
-          echo "Destroy ile faturayı durdur"
-          echo "=========================================="
+          echo "UI  → http://$UI_FQDN:7860
 
   # ========================================
   # DESTROY JOB - Container'ları Sil
