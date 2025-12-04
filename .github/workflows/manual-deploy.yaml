@@ -220,7 +220,12 @@ jobs:
             echo "DEPLOYMENT COMPLETE!"
             echo "=========================================="
             echo "API → http://$API_FQDN:8000/health"
-            echo "UI  → http://$UI_FQDN:7860
+            echo "UI  → http://$UI_FQDN:7860"
+            echo "==========================================" 
+            echo "💰 Cost: ~€0.83/hour (~€20/month if running 24/7)"
+            echo "🗑️  To stop billing: Run 'destroy' action"
+            echo "=========================================="
+            
 
   # ========================================
   # DESTROY JOB - Container'ları Sil
