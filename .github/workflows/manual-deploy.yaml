@@ -110,7 +110,7 @@ jobs:
             path: train_output.txt
             
       - name: 9.Docker Login
-        uses: docker/login-action@v3
+        uses: docker/login-action@v2
         with:
           registry: ${{ env.ACR_LOGIN_SERVER }}
           username: ${{ env.ACR_USERNAME }}
