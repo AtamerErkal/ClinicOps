@@ -192,7 +192,12 @@ jobs:
             --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
             --registry-username ${{ env.ACR_USERNAME }} \
             --registry-password ${{ env.ACR_PASSWORD }} \
-            --ports 8501 \
+            --ports:
+              - containerPort: 7860 
+                targetPort: 8501         
+                protocol: TCP
+                name: http
+                appProtocol: http
             --cpu 1 \
             --memory 1.5 \
             --os-type Linux \

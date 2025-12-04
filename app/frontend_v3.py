@@ -3,6 +3,9 @@ import requests
 import plotly.graph_objects as go
 import os
 
+if "AZURE_CONTAINER" in os.environ or os.getenv("STREAMLIT_SERVER_PORT"):
+    os.environ["STREAMLIT_SERVER_PORT"] = "7860"
+
 # ==============================================================================
 # CONFIGURATION & API
 # ==============================================================================
