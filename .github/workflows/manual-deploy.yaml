@@ -211,8 +211,6 @@ jobs:
               --ip-address Public --ports 7860 \
               --environment-variables \
                 CLINICOPS_API_URL="http://$API_FQDN:8000" \
-                STREAMLIT_SERVER_PORT=7860 \
-                STREAMLIT_SERVER_HEADLESS=true \
               --restart-policy Always
   
             UI_FQDN=$(az container show -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} --query ipAddress.fqdn -o tsv)
