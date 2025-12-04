@@ -104,7 +104,7 @@ jobs:
           fi
 
       - name: 8. Upload training logs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
             name: training-logs
             path: train_output.txt
