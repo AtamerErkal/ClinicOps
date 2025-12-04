@@ -183,12 +183,13 @@ jobs:
       - name: 13. Deploy UI to ACI
         run: |
           echo "Deploying UI"
-          API_FQDN=${{ env.ACI_API_PREFIX }}-${{ steps.tag.outputs.NEW_TAG }}.${{ env.LOCATION }}.azurecontainer.io
+          API_FQDN="${{ env.ACI_API_PREFIX }}-${{ steps.tag.outputs.NEW_TAG }}.${{ env.LOCATION }}.azurecontainer.io"
+          
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name ${{ env.ACI_UI_NAME }} \
             --image ${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:${{ steps.tag.outputs.NEW_TAG }} \
-            --dns-name-label ${{ env.ACI_UI_NAME }}-${{ steps.tag.outputs.NEW_TAG }} \
+            --dns-name-label clinicops-ui-${{ steps.tag.outputs.NEW_TAG }} \
             --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
             --registry-username ${{ env.ACR_USERNAME }} \
             --registry-password ${{ env.ACR_PASSWORD }} \
@@ -198,7 +199,6 @@ jobs:
             --location ${{ env.LOCATION }} \
             --ip-address Public \
             --ports 7860 \
-            --protocol TCP \
             --environment-variables \
               CLINICOPS_API_URL="http://$API_FQDN:8000" \
               STREAMLIT_SERVER_PORT=7860 \
@@ -206,15 +206,16 @@ jobs:
             --restart-policy Always
 
           UI_FQDN=$(az container show -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} --query ipAddress.fqdn -o tsv)
+          
           echo ""
           echo "=========================================="
           echo "DEPLOYMENT COMPLETE!"
           echo "=========================================="
-          echo "🌐 API: http://$API_FQDN:8000/health"
-          echo "🌐 UI: http://$UI_FQDN:7860"
+          echo "API → http://$API_FQDN:8000/health"
+          echo "UI  → http://$UI_FQDN:7860   ← MOBİL DAHİL ÇALIŞIR"
           echo "=========================================="
-          echo "💰 Cost: ~€0.83/hour (~€20/month if running 24/7)"
-          echo "🗑️ To stop billing: Run 'destroy' action"
+          echo "Cost: ~€0.83/hour"
+          echo "Destroy ile faturayı durdur"
           echo "=========================================="
 
   # ========================================
