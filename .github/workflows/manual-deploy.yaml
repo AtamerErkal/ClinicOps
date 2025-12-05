@@ -196,7 +196,6 @@ jobs:
                 
                 echo "🚀 Deploying UI container (${{ env.ACI_UI_NAME }})..."
                 
-                # NOT: Komut zincirini kırmamak için aşağıdaki blokta araya yorum satırı eklemeyin.
                 az container create \
                   --resource-group ${{ env.RG_NAME }} \
                   --name ${{ env.ACI_UI_NAME }} \
@@ -209,8 +208,7 @@ jobs:
                   --os-type Linux \
                   --location ${{ env.LOCATION }} \
                   --ip Public \
-                  --ports 80 \
-                  --target-port 7860 \
+                  --ports 7860 \
                   --environment-variables CLINICOPS_API_URL="http://$API_INTERNAL_NAME:8000" \
                   --restart-policy Always
                 
@@ -223,7 +221,7 @@ jobs:
                 echo "✅ DEPLOYMENT COMPLETE!"
                 echo "=========================================="
                 echo "🔗 API: http://$API_INTERNAL_NAME.${{ env.LOCATION }}.azurecontainer.io:8000/health"
-                echo "🔗 UI:  http://$UI_FQDN"
+                echo "🔗 UI:  http://$UI_FQDN:7860"
                 echo "=========================================="
             
       - name: 14. Verify Deployment
