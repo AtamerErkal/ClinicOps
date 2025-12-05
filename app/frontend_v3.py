@@ -9,7 +9,7 @@ if "AZURE_CONTAINER" in os.environ or os.getenv("STREAMLIT_SERVER_PORT"):
 
 # Streamlit config for mobile
 st.set_page_config(
-    page_title="ClinicOps - Length of Stay Prediction",
+    page_title="ClinicOps – AI-Powered Hospital Length of Stay Prediction",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="auto"
@@ -50,16 +50,6 @@ CATEGORICAL_FEATURES = {
     'malnutrition':             {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '🍽️', 'desc': "Malnutrition"},
     'hemo':                     {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '🩸', 'desc': "Hemorrhoids"}
 }
-
-# ==============================================================================
-# PAGE CONFIG & MODERN STYLING
-# ==============================================================================
-st.set_page_config(
-    page_title="ClinicOps – AI-Powered Hospital Length of Stay Prediction",
-    page_icon="🏥",
-    layout="wide",
-    initial_sidebar_state="auto"
-)
 
 st.markdown("""
 <style>
