@@ -11,6 +11,8 @@ import pandas as pd
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from azure.storage.blob import BlobClient
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
 from pydantic import BaseModel
 import traceback
 
@@ -40,28 +42,36 @@ app = FastAPI(
 
 
 def get_latest_run_id() -> str | None:
-    """Fetch latest MLflow run ID from Azure Blob Storage"""
+    """Robust way to fetch latest run ID – works with connection string OR managed identity"""
     try:
+        # CASE 1: Connection string varsa (GitHub Actions'ta var)
         if AZURE_CONN_STRING:
-            blob_client = BlobClient.from_connection_string(
-                conn_str=AZURE_CONN_STRING,
-                container_name=CONTAINER_NAME,
-                blob_name="latest_model_run.txt"
+            logger.info("Using AZURE_STORAGE_CONNECTION_STRING to fetch latest run ID")
+            blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONN_STRING)
+            blob_client = blob_service_client.get_blob_client(
+                container=CONTAINER_NAME,
+                blob="latest_model_run.txt"
             )
         else:
-            blob_client = BlobClient(
-                account_url=f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net",
-                container_name=CONTAINER_NAME,
-                blob_name="latest_model_run.txt",
-                credential=AZURE_KEY
+            # CASE 2: Connection string yoksa → Managed Identity veya Storage Key kullan
+            logger.info("AZURE_CONN_STRING not found → trying DefaultAzureCredential")
+            credential = DefaultAzureCredential()
+            account_url = f"https://{AZURE_STORAGE_ACCOUNT}.blob.core.windows.net"
+            blob_service_client = BlobServiceClient(account_url=account_url, credential=credential)
+            blob_client = blob_service_client.get_blob_client(
+                container=CONTAINER_NAME,
+                blob="latest_model_run.txt"
             )
-        
-        run_id = blob_client.download_blob().readall().decode("utf-8").strip()
-        logger.info(f"Latest MLflow Run ID fetched: {run_id}")
+
+        # Download & return run ID
+        download = blob_client.download_blob()
+        run_id = download.readall().decode("utf-8").strip()
+        logger.info(f"Successfully fetched latest Run ID: {run_id}")
         return run_id
+
     except Exception as e:
-        logger.error(f"Failed to get latest run ID: {e}")
-        return RUN_ID  # fallback to training-time ID
+        logger.warning(f"Could not fetch latest run ID: {e}. Falling back to training-time RUN_ID")
+        return RUN_ID
 
 
 def load_model():
