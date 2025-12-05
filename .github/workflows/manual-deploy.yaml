@@ -209,13 +209,13 @@ jobs:
               --cpu 1 --memory 1.5 \
               --os-type Linux --location ${{ env.LOCATION }} \
               
-              # Düzeltme 2: Mobil Erişim için Port 80'i 7860'a yönlendiriyoruz
-              --ip-address Public \
+              # Hata Düzeltildi: '--ip-address' yerine doğru parametre olan '--ip' kullanıldı
+              --ip Public \ 
               --ports 80 \
               --target-port 7860 \
               
               --environment-variables \
-                # Düzeltme 1: API bağlantısı için iç ağ adını kullanıyoruz
+                # API bağlantısı için iç ağ adını kullanıyoruz
                 CLINICOPS_API_URL="http://$API_INTERNAL_NAME:8000" \
               --restart-policy Always
             
@@ -227,7 +227,7 @@ jobs:
             echo "=========================================="
             echo "✅ DEPLOYMENT COMPLETE!"
             echo "=========================================="
-            # FQDN artık standart HTTP portu (80) üzerinden çalışacak, port belirtmeye gerek yok
+            # UI artık port 80'de çalışıyor, linkte port belirtmeye gerek yok
             echo "🔗 API: http://$API_INTERNAL_NAME.${{ env.LOCATION }}.azurecontainer.io:8000/health"
             echo "🔗 UI:  http://$UI_FQDN"
             echo "=========================================="
