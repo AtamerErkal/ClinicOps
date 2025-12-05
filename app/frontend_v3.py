@@ -1,294 +1,218 @@
 import streamlit as st
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import plotly.graph_objects as go
 import os
 
-# Mobile & ACI compatibility
+# Mobil & ACI uyumlu port
 if "AZURE_CONTAINER" in os.environ or os.getenv("STREAMLIT_SERVER_PORT"):
     os.environ["STREAMLIT_SERVER_PORT"] = "7860"
 
-# Streamlit config for mobile
+# Streamlit config – Mobil için centered layout
 st.set_page_config(
     page_title="ClinicOps – AI-Powered Hospital Length of Stay Prediction",
     page_icon="🏥",
-    layout="wide",
-    initial_sidebar_state="auto"
+    layout="centered",  # wide → centered (mobilde overflow yok)
+    initial_sidebar_state="auto",
+    menu_items=None  # Menü gizle (temiz UI)
 )
 
-# API URL - support both local and deployed
+# API URL
 API_URL = os.getenv("CLINICOPS_API_URL", "http://localhost:8000")
 
-# ==============================================================================
-# FEATURE DEFINITIONS
-# ==============================================================================
-NUMERIC_FEATURES = {
-    'hematocrit':       {'default': 35.0, 'min': 0.0,  'max': 60.0,  'icon': '🩸', 'unit': '%',      'normal_min': 30.0, 'normal_max': 50.0, 'desc': "Red blood cell volume"},
-    'neutrophils':      {'default': 50.0, 'min': 0.0,  'max': 100.0, 'icon': '⚪', 'unit': '%',      'normal_min': 40.0, 'normal_max': 75.0, 'desc': "Neutrophils percentage"},
-    'sodium':           {'default': 138.0,'min': 100.0,'max': 180.0, 'icon': '🧂', 'unit': 'mEq/L',  'normal_min': 135.0,'normal_max': 145.0,'desc': "Sodium level"},
-    'glucose':          {'default': 100.0,'min': 50.0, 'max': 500.0, 'icon': '🍬', 'unit': 'mg/dL',  'normal_min': 70.0, 'normal_max': 120.0,'desc': "Blood glucose"},
-    'bloodureanitro':   {'default': 15.0, 'min': 0.0,  'max': 100.0, 'icon': '🫘', 'unit': 'mg/dL',  'normal_min': 7.0,  'normal_max': 20.0, 'desc': "Blood Urea Nitrogen (BUN)"},
-    'creatinine':       {'default': 1.0,  'min': 0.0,  'max': 15.0,  'icon': '💧', 'unit': 'mg/dL',  'normal_min': 0.6,  'normal_max': 1.2,  'desc': "Creatinine level"},
-    'bmi':              {'default': 25.0, 'min': 10.0, 'max': 60.0,  'icon': '⚖️', 'unit': 'kg/m²',  'normal_min': 18.5, 'normal_max': 24.9, 'desc': "Body Mass Index"},
-    'pulse':            {'default': 75.0, 'min': 40.0, 'max': 200.0, 'icon': '💓', 'unit': 'bpm',    'normal_min': 60.0, 'normal_max': 100.0,'desc': "Heart rate"},
-    'respiration':      {'default': 16.0, 'min': 8.0,  'max': 40.0,  'icon': '🫁', 'unit': '/min',   'normal_min': 12.0, 'normal_max': 20.0, 'desc': "Respiratory rate"}
-}
-
-CATEGORICAL_FEATURES = {
-    'rcount':                   {'default': '0',   'options': ['0','1','2','3','4','5+'], 'labels': ['0', '1', '2', '3', '4', '5+'], 'icon': '🔄', 'desc': "Prior hospital visits"},
-    'gender':                   {'default': 'F',   'options': ['F','M'],                  'labels': ['Female', 'Male'],                 'icon': '👤', 'desc': "Gender"},
-    'facid':                    {'default': 'A',   'options': ['A','B','C','D','E'],      'labels': ['Facility A','Facility B','Facility C','Facility D','Facility E'], 'icon': '🏥', 'desc': "Facility ID"},
-    'secondarydiagnosisnonicd9':{'default': '0',   'options': [str(i) for i in range(11)], 'labels': [str(i) for i in range(11)], 'icon': '📋', 'desc': "Number of secondary diagnoses"},
-    'dialysisrenalendstage':    {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '💉', 'desc': "Dialysis / End-stage renal disease"},
-    'asthma':                   {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '🫁', 'desc': "Asthma"},
-    'irondef':                  {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '🩸', 'desc': "Iron deficiency anemia"},
-    'pneum':                    {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '🦠', 'desc': "Pneumonia"},
-    'substancedependence':      {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '💊', 'desc': "Substance dependence"},
-    'psychologicaldisordermajor':{'default': 0,    'options': [0,1], 'labels': ['No','Yes'], 'icon': '🧠', 'desc': "Major psychological disorder"},
-    'depress':                  {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '😔', 'desc': "Depression"},
-    'psychother':               {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '🛋️', 'desc': "Psychotherapy"},
-    'fibrosisandother':         {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '🫁', 'desc': "Lung fibrosis"},
-    'malnutrition':             {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '🍽️', 'desc': "Malnutrition"},
-    'hemo':                     {'default': 0,     'options': [0,1], 'labels': ['No','Yes'], 'icon': '🩸', 'desc': "Hemorrhoids"}
-}
-
+# Mobil CSS – Büyük slider, buton, responsive
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     html, body, [class*="css"] {font-family: 'Inter', sans-serif;}
-    .block-container {padding-top: 1.5rem;}
+    .block-container {padding-top: 1rem; max-width: 100vw;}
     
-    .stExpander {
-        border: 1px solid rgba(100,100,100,0.2);
-        border-radius: 12px;
-        background: rgba(255,255,255,0.7);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        margin-bottom: 1rem;
+    /* Mobil slider büyüt */
+    [data-testid="stSlider"] {
+        padding: 1rem 0;
+    }
+    [data-testid="stSlider"] .thumb {
+        width: 40px !important; height: 40px !important; 
+        background: #667eea !important;
+    }
+    [data-testid="stSlider"] input[type=range] {
+        height: 8px !important;
     }
     
+    /* Büyük predict butonu */
     .stButton > button {
-        background: #667eea; color: white; border-radius: 8px; border: none;
-        padding: 0.6rem 2rem; font-weight: 600; width: 100%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white; border-radius: 12px; border: none;
+        padding: 1rem 2rem; font-weight: 600; font-size: 1.2rem;
+        height: 4rem; width: 100%; margin: 1rem 0;
     }
-    .stButton > button:hover {background: #5a67d8;}
+    .stButton > button:hover {background: linear-gradient(90deg, #5a67d8 0%, #6b46c1 100%);}
     
-    .css-1d391kg {padding-top: 1rem;} /* Sidebar padding */
+    /* Expander mobil */
+    .stExpander {border-radius: 12px; margin-bottom: 1rem;}
     
+    /* Dark mode uyumlu */
     @media (prefers-color-scheme: dark) {
-        .stExpander {background: rgba(45,55,72,0.7); border-color: #4a5568;}
-        .stButton > button {background: #5a67d8;}
-        .stButton > button:hover {background: #667eea;}
+        .stExpander {background: rgba(45,55,72,0.8); border-color: #4a5568;}
     }
+    
+    /* Header padding azalt */
+    .css-1d391kg {padding-top: 0.5rem;}
 </style>
 """, unsafe_allow_html=True)
 
-# ==============================================================================
-# SIDEBAR – PROJECT INFO
-# ==============================================================================
+# Feature definitions (mevcut – kısaltılmış)
+NUMERIC_FEATURES = {
+    'hematocrit': {'default': 35.0, 'min': 0.0, 'max': 60.0, 'icon': '🩸', 'unit': '%', 'normal_min': 30.0, 'normal_max': 50.0, 'desc': "Red blood cell volume"},
+    'neutrophils': {'default': 50.0, 'min': 0.0, 'max': 100.0, 'icon': '⚪', 'unit': '%', 'normal_min': 40.0, 'normal_max': 75.0, 'desc': "Neutrophils percentage"},
+    'sodium': {'default': 138.0, 'min': 100.0, 'max': 180.0, 'icon': '🧂', 'unit': 'mEq/L', 'normal_min': 135.0, 'normal_max': 145.0, 'desc': "Sodium level"},
+    'glucose': {'default': 100.0, 'min': 50.0, 'max': 500.0, 'icon': '🍬', 'unit': 'mg/dL', 'normal_min': 70.0, 'normal_max': 120.0, 'desc': "Blood glucose"},
+    'bloodureanitro': {'default': 15.0, 'min': 0.0, 'max': 100.0, 'icon': '🫘', 'unit': 'mg/dL', 'normal_min': 7.0, 'normal_max': 20.0, 'desc': "Blood Urea Nitrogen (BUN)"},
+    'creatinine': {'default': 1.0, 'min': 0.0, 'max': 15.0, 'icon': '💧', 'unit': 'mg/dL', 'normal_min': 0.6, 'normal_max': 1.2, 'desc': "Creatinine level"},
+    'bmi': {'default': 25.0, 'min': 10.0, 'max': 60.0, 'icon': '⚖️', 'unit': 'kg/m²', 'normal_min': 18.5, 'normal_max': 24.9, 'desc': "Body Mass Index"},
+    'pulse': {'default': 75.0, 'min': 40.0, 'max': 200.0, 'icon': '💓', 'unit': 'bpm', 'normal_min': 60.0, 'normal_max': 100.0, 'desc': "Heart rate"},
+    'respiration': {'default': 16.0, 'min': 8.0, 'max': 40.0, 'icon': '🫁', 'unit': '/min', 'normal_min': 12.0, 'normal_max': 20.0, 'desc': "Respiratory rate"}
+}
+
+CATEGORICAL_FEATURES = {
+    'rcount': {'default': '0', 'options': ['0','1','2','3','4','5+'], 'labels': ['0', '1', '2', '3', '4', '5+'], 'icon': '🔄', 'desc': "Prior hospital visits"},
+    'gender': {'default': 'F', 'options': ['F','M'], 'labels': ['Female', 'Male'], 'icon': '👤', 'desc': "Gender"},
+    'facid': {'default': 'A', 'options': ['A','B','C','D','E'], 'labels': ['Facility A','B','C','D','E'], 'icon': '🏥', 'desc': "Facility ID"},
+    'secondarydiagnosisnonicd9': {'default': '0', 'options': [str(i) for i in range(11)], 'labels': [str(i) for i in range(11)], 'icon': '📋', 'desc': "Number of secondary diagnoses"},
+    'dialysisrenalendstage': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '💉', 'desc': "Dialysis / End-stage renal disease"},
+    'asthma': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '🫁', 'desc': "Asthma"},
+    'irondef': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '🩸', 'desc': "Iron deficiency anemia"},
+    'pneum': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '🦠', 'desc': "Pneumonia"},
+    'substancedependence': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '💊', 'desc': "Substance dependence"},
+    'psychologicaldisordermajor': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '🧠', 'desc': "Major psychological disorder"},
+    'depress': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '😔', 'desc': "Depression"},
+    'psychother': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '🛋️', 'desc': "Psychotherapy"},
+    'fibrosisandother': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '🫁', 'desc': "Lung fibrosis"},
+    'malnutrition': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '🍽️', 'desc': "Malnutrition"},
+    'hemo': {'default': 0, 'options': [0,1], 'labels': ['No','Yes'], 'icon': '🩸', 'desc': "Hemorrhoids"}
+}
+
+# Sidebar (mevcut)
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/000000/hospital.png", width=80)
     st.title("ClinicOps")
     st.markdown("### AI-Powered Length of Stay Prediction")
-    
-    st.markdown("""
-    **End-to-end MLOps Healthcare Platform**
-    
-    **Purpose:**  
-    Predicts how many days a patient will stay in the hospital using clinical data — helping hospitals optimize bed capacity, staffing, and resource planning.
-    
-    **Model:**  
-    - Random Forest + log-transform  
-    - R² = 0.84 (original scale)  
-    - Trained on 100k+ real hospitalizations
-    
-    **Tech Stack:**
-    - DVC + Azure Blob (data versioning)
-    - MLflow (tracking & serving)
-    - FastAPI + MLflow model serving
-    - Streamlit (clinical UI)
-    - GitHub Actions → Azure Container Instances (zero-cost when idle)
-    
-    **Live in 10 minutes · Destroy in a minute · Cost = 0 ₺ when not used**
-    
-    Made with love by a passionate MLOps Engineer
-    """)
-    
-    st.markdown("---")
-    st.markdown("**Demo Links**")
-    st.markdown("[GitHub Repo](https://github.com/AtamerErkal/ClinicOps)")
-    #st.markdown("[Live Demo](http://clinicops-ui-...azurecontainer.io:8501)")
+    st.markdown("**End-to-end MLOps Healthcare Platform**")
+    st.markdown("- Random Forest (R²=0.918)")
+    st.markdown("- Azure ACI Deployed")
+    st.markdown("- Mobile Ready")
 
-# ==============================================================================
-# MAIN PAGE – INTRODUCTION
-# ==============================================================================
-st.title("ClinicOps: AI-Powered Length of Stay Prediction")
-st.markdown("""
-**Welcome!** This tool predicts hospital length of stay using real clinical data.
-
-**How to use:**
-1. Adjust lab values & vitals (slider or type manually — they sync!)
-2. Select patient medical history
-3. Click **Predict Length of Stay**
-4. See prediction + clinical risk assessment
-
-Normal reference ranges are shown — abnormal values are highlighted in red.
-""")
-
-# ==============================================================================
-# INPUT SECTION – Numeric (slider + synced number input)
-# ==============================================================================
-st.markdown("### Laboratory Values & Vitals")
+# Numeric Inputs (mevcut, ama session_state sync ile)
+st.markdown("### Vital Signs & Labs")
 numeric_data = {}
-cols = st.columns(3)
+for feat, cfg in NUMERIC_FEATURES.items():
+    with st.expander(f"{cfg['icon']} {feat.replace('_', ' ').title()}", expanded=False):
+        st.caption(cfg['desc'])
+        if f"value_{feat}" not in st.session_state:
+            st.session_state[f"value_{feat}"] = cfg['default']
+        
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            slider_val = st.slider(
+                label=" ",  # Boş label (mobil temiz)
+                min_value=cfg['min'], max_value=cfg['max'],
+                value=st.session_state[f"value_{feat}"], step=0.1,
+                key=f"slider_{feat}"
+            )
+        with col2:
+            num_val = st.number_input(
+                label=" ", min_value=cfg['min'], max_value=cfg['max'],
+                value=st.session_state[f"value_{feat}"], step=0.1,
+                key=f"num_{feat}", label_visibility="collapsed"
+            )
+        
+        st.session_state[f"value_{feat}"] = num_val if abs(num_val - st.session_state[f"value_{feat}"]) > 0.01 else slider_val
+        numeric_data[feat] = st.session_state[f"value_{feat}"]
 
-for idx, (feat, cfg) in enumerate(NUMERIC_FEATURES.items()):
-    with cols[idx % 3]:
-        with st.expander(f"{cfg['icon']} {feat.replace('_', ' ').title()}  \nNormal range: **{cfg['normal_min']}–{cfg['normal_max']} {cfg['unit']}**", expanded=True):
-            st.caption(cfg['desc'])
-            
-            # Shared state via session_state
-            if f"value_{feat}" not in st.session_state:
-                st.session_state[f"value_{feat}"] = cfg['default']
-            
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                slider_val = st.slider(
-                    "Drag slider",
-                    min_value=cfg['min'],
-                    max_value=cfg['max'],
-                    value=st.session_state[f"value_{feat}"],
-                    step=0.1,
-                    key=f"slider_{feat}",
-                    on_change=lambda f=feat: st.session_state.update({f"value_{f}": st.session_state[f"slider_{f}"]})
-                )
-            with col2:
-                num_val = st.number_input(
-                    "Type",
-                    min_value=cfg['min'],
-                    max_value=cfg['max'],
-                    value=st.session_state[f"value_{feat}"],
-                    step=0.1,
-                    key=f"num_{feat}",
-                    label_visibility="collapsed",
-                    on_change=lambda f=feat: st.session_state.update({f"value_{f}": st.session_state[f"num_{f}"]})
-                )
-            
-            # Sync
-            st.session_state[f"value_{feat}"] = num_val if num_val != st.session_state[f"value_{feat}"] else slider_val
-            numeric_data[feat] = st.session_state[f"value_{feat}"]
-
-# ==============================================================================
-# INPUT SECTION – Categorical
-# ==============================================================================
+# Categorical (mevcut)
 st.markdown("### Medical History & Demographics")
 categorical_data = {}
-cat_cols = st.columns(4)
-
-for idx, (feat, cfg) in enumerate(CATEGORICAL_FEATURES.items()):
-    with cat_cols[idx % 4]:
-        with st.expander(f"{cfg['icon']} {feat.replace('_', ' ').title()}", expanded=True):
+cat_cols = st.columns(len(CATEGORICAL_FEATURES) // 3 + 1) if len(CATEGORICAL_FEATURES) > 3 else st.columns(4)
+idx = 0
+for feat, cfg in CATEGORICAL_FEATURES.items():
+    with cat_cols[idx % len(cat_cols)]:
+        with st.expander(f"{cfg['icon']} {feat.replace('_', ' ').title()}", expanded=False):
             st.caption(cfg['desc'])
-            default_idx = cfg['options'].index(cfg['default'])
+            default_idx = cfg['options'].index(str(cfg['default']))
             selected = st.selectbox(
-                "Select",
-                options=cfg['options'],
-                format_func=lambda x: cfg['labels'][cfg['options'].index(x)],
-                index=default_idx,
-                key=f"cat_{feat}"
+                label=" ", options=cfg['options'],
+                format_func=lambda x: cfg['labels'][cfg['options'].index(str(x))],
+                index=default_idx, key=f"cat_{feat}"
             )
-            categorical_data[feat] = selected
+            categorical_data[feat] = str(selected)
+    idx += 1
 
-# ==============================================================================
-# PREDICTION
-# ==============================================================================
-st.markdown("### Prediction")
-if st.button("Predict Length of Stay", type="primary"):
-    payload = {k: float(v) if k in NUMERIC_FEATURES else str(v) 
-               for k, v in {**numeric_data, **categorical_data}.items()}
-
-    with st.spinner("Running inference..."):
+# Prediction – Retry + Uzun Timeout (MOBİL İÇİN KRİTİK)
+st.markdown("### Predict Length of Stay")
+if st.button("🚀 Predict Now", type="primary", use_container_width=True):
+    payload = {**numeric_data, **categorical_data}
+    
+    # Retry session (mobil yavaş bağlantı için)
+    session = requests.Session()
+    retry_strategy = Retry(total=5, backoff_factor=2, status_forcelist=[502, 503, 504, 104])
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    with st.spinner(f"Analyzing with AI... (connecting to {API_URL.split('//')[1].split(':')[0]})"):
         try:
-            resp = requests.post(f"{API_URL}/predict", json=payload, timeout=15)
+            resp = session.post(f"{API_URL}/predict", json=payload, timeout=45)  # 15 → 45sn
             if resp.status_code == 200:
                 result = resp.json()
                 los = round(result['predicted_length_of_stay'], 2)
-
-                st.markdown(f"### Predicted Length of Stay: **{los} days**")
-
-                # Risk level with color
+                st.success(f"**Predicted: {los} days**")
+                
+                # Risk gauge (mevcut)
                 risk = "Low" if los < 4 else "Medium" if los < 8 else "High"
-                risk_color = {"Low": "#38ef7d", "Medium": "#ffd89b", "High": "#ff6b6b"}[risk]
-                st.markdown(f"<h2 style='text-align:center; color:{risk_color}; margin:1rem 0;'>{risk} Risk</h2>", unsafe_allow_html=True)
-
-                # Gauge
+                risk_color = {"Low": "#10b981", "Medium": "#f59e0b", "High": "#ef4444"}[risk]
+                st.markdown(f"<h3 style='text-align:center; color:{risk_color};'>Risk: {risk}</h3>", unsafe_allow_html=True)
+                
                 fig = go.Figure(go.Indicator(
-                    mode="gauge+number",
-                    value=los,
-                    number={'suffix': " days", 'font': {'size': 48}},
-                    gauge={
-                        'axis': {'range': [0, 20], 'tickwidth': 2},
-                        'bar': {'color': "#667eea"},
-                        'steps': [
-                            {'range': [0, 4], 'color': "#c6f6d5"},
-                            {'range': [4, 8], 'color': "#fefcbf"},
-                            {'range': [8, 20], 'color': "#fed7d7"}
-                        ],
-                        'threshold': {
-                            'line': {'color': "red", 'width': 6},
-                            'thickness': 0.75,
-                            'value': 10
-                        }
-                    },
-                    title={'text': "<b>Length of Stay Prediction</b><br><span style='font-size:0.7em;color:gray'>Red line = High-risk threshold (>10 days)</span>"}
+                    mode="gauge+number+delta",
+                    value=los, delta={'reference': 5},
+                    number={'suffix': " days", 'font': {'size': 42}},
+                    gauge={'axis': {'range': [0, 20]}, 'bar': {'color': "#667eea"},
+                           'steps': [{'range': [0,4],'color':'lightgreen'}, {'range':[4,8],'color':'yellow'}, {'range':[8,20],'color':'red'}],
+                           'threshold': {'line': {'color': "red", 'width': 4}, 'thickness': 0.75, 'value': 10}},
+                    title={'text': "<b>Hospital Stay Prediction</b>"}  # Basit title
                 ))
-                fig.update_layout(height=450)
+                fig.update_layout(height=400, margin=dict(l=20,r=20,t=50,b=20))
                 st.plotly_chart(fig, use_container_width=True)
-
+                
+                # Debug info (opsiyonel, mobil gizle)
+                if st.checkbox("Show Debug"):
+                    st.json(result.get('debug', {}))
+                    
             else:
-                st.error("API Error")
-                st.json(resp.json())
+                st.error(f"API Error {resp.status_code}: {resp.text[:200]}")
+        except requests.exceptions.ConnectionError as e:
+            st.error(f"Connection failed (mobil ağı yavaş olabilir): {str(e)[:100]}")
+            st.info("💡 Tip: WiFi'ye bağlan veya sayfayı yenile.")
         except Exception as e:
-            st.error(f"Connection failed: {e}")
+            st.error(f"Unexpected error: {e}")
 
-# ==============================================================================
-# LAB & MEDICAL HISTORY SUMMARY
-# ==============================================================================
+# Summary (mevcut – kısalt)
 st.markdown("### Clinical Summary")
-
 col1, col2 = st.columns(2)
-
 with col1:
-    st.markdown("**Laboratory Results**")
-    lab_data = []
-    for feat, cfg in NUMERIC_FEATURES.items():
-        val = numeric_data[feat]
-        normal = f"{cfg['normal_min']}–{cfg['normal_max']} {cfg['unit']}"
-        status = "Abnormal" if val < cfg['normal_min'] or val > cfg['normal_max'] else "Normal"
-        color = "🔴" if status == "Abnormal" else "🟢"
-        lab_data.append({"Test": feat.replace('_', ' ').title(), "Value": f"{val} {cfg['unit']}", "Normal Range": normal, "Status": f"{color} {status}"})
+    st.subheader("Labs")
+    lab_data = [{"Test": k.replace('_',' ').title(), "Value": f"{v} {NUMERIC_FEATURES[k]['unit']}", 
+                 "Status": "🟢 Normal" if NUMERIC_FEATURES[k]['normal_min'] <= v <= NUMERIC_FEATURES[k]['normal_max'] else "🔴 Abnormal"} 
+                for k,v in numeric_data.items()]
     st.table(lab_data)
-
 with col2:
-    st.markdown("**Active Comorbidities & Risk Factors**")
-    risk_factors = []
-    for feat, cfg in CATEGORICAL_FEATURES.items():
-        if feat in ['rcount', 'gender', 'facid', 'secondarydiagnosisnonicd9']:
-            continue
-        val = categorical_data[feat]
-        if val == '1' or val == 1:
-            risk_factors.append(f"• {cfg['desc']}")
-    if risk_factors:
-        for factor in risk_factors:
-            st.error(factor)
-    else:
-        st.success("No active high-risk comorbidities")
+    st.subheader("Risk Factors")
+    risks = [k for k,v in categorical_data.items() if v == '1' and k in CATEGORICAL_FEATURES]
+    if risks:
+        for r in risks: st.warning(CATEGORICAL_FEATURES[r]['desc'])
+    else: st.success("No high risks")
 
-# ==============================================================================
-# FOOTER
-# ==============================================================================
+# Footer
 st.markdown("---")
-st.markdown(
-    "<p style='text-align:center; color:gray; font-size:0.9rem;'>"
-    "© 2025 ClinicOps • Enterprise MLOps Healthcare Platform • Powered by Azure, MLflow, DVC & Streamlit"
-    "</p>",
-    unsafe_allow_html=True
-)
+st.markdown("<p style='text-align:center; color:gray; font-size:0.8rem;'>© 2025 ClinicOps • Mobile-Ready MLOps • Powered by Azure & Streamlit</p>", unsafe_allow_html=True)

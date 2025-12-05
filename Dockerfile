@@ -1,44 +1,29 @@
-# Dockerfile (API için - FastAPI/Uvicorn)
-
 FROM python:3.11-slim
+
+# Sistem bağımlılıkları (MLflow Azure için)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libffi-dev libssl-dev curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    gcc \
-    g++ \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first (better caching)
+# Requirements
 COPY requirements.txt .
-
-# Install ALL dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# CRITICAL: Ensure Azure MLflow support is installed
-RUN pip install --no-cache-dir \
-    mlflow[azure] \
-    azure-storage-blob \
-    azure-identity \
-    azure-core \
-    azure-mgmt-containerinstance \
-    adlfs
+# API kopyala
+COPY api.py .
 
-# Verify installations
-RUN python -c "import mlflow; import azure.storage.blob; import azure.identity; print('✅ All dependencies OK')"
-
-# Copy application code
-COPY . /app
-
-# Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
+# Sağlam healthcheck (model load için 90s bekle)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# Run with Uvicorn
-CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+# Uvicorn – Tek worker, uzun timeout (mobil yavaş bağlantı için)
+CMD ["uvicorn", "api:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "1", \
+     "--timeout-keep-alive", "300", \
+     "--log-level", "info"]
