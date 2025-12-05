@@ -198,6 +198,8 @@ jobs:
             TAG="${{ steps.build_ui.outputs.NEW_TAG }}"
             API_FQDN="clinicops-api-$TAG.${{ env.LOCATION }}.azurecontainer.io"
             
+            echo "🚀 Deploying UI container..."
+            
             az container create \
               --resource-group ${{ env.RG_NAME }} \
               --name ${{ env.ACI_UI_NAME }} \
@@ -212,20 +214,37 @@ jobs:
               --environment-variables \
                 CLINICOPS_API_URL="http://$API_FQDN:8000" \
               --restart-policy Always
-  
+            
+            sleep 30  # Wait for container to fully start
+            
             UI_FQDN=$(az container show -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} --query ipAddress.fqdn -o tsv)
-          
+            
             echo ""
             echo "=========================================="
-            echo "DEPLOYMENT COMPLETE!"
+            echo "✅ DEPLOYMENT COMPLETE!"
             echo "=========================================="
-            echo "API → http://$API_FQDN:8000/health"
-            echo "UI  → http://$UI_FQDN:7860"
-            echo "==========================================" 
-            echo "💰 Cost: ~€0.83/hour (~€20/month if running 24/7)"
-            echo "🗑️  To stop billing: Run 'destroy' action"
+            echo "🔗 API: http://$API_FQDN:8000/health"
+            echo "🔗 UI:  http://$UI_FQDN:7860"
             echo "=========================================="
             
+      - name: 14. Verify Deployment
+        run: |
+            TAG="${{ steps.build_ui.outputs.NEW_TAG }}"
+            UI_FQDN="clinicops-ui-$TAG.${{ env.LOCATION }}.azurecontainer.io"
+            
+            echo "🔍 Testing UI endpoint..."
+            for i in {1..10}; do
+              if curl -f -s "http://$UI_FQDN:7860" > /dev/null; then
+                echo "✅ UI is accessible!"
+                exit 0
+              fi
+              echo "⏳ Attempt $i/10 - waiting..."
+              sleep 10
+            done
+            
+            echo "⚠️ UI not accessible, checking logs..."
+            az container logs -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }}
+
 
   # ========================================
   # DESTROY JOB - Container'ları Sil

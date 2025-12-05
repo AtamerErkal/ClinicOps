@@ -3,12 +3,19 @@ import requests
 import plotly.graph_objects as go
 import os
 
+# Mobile & ACI compatibility
 if "AZURE_CONTAINER" in os.environ or os.getenv("STREAMLIT_SERVER_PORT"):
     os.environ["STREAMLIT_SERVER_PORT"] = "7860"
 
-# ==============================================================================
-# CONFIGURATION & API
-# ==============================================================================
+# Streamlit config for mobile
+st.set_page_config(
+    page_title="ClinicOps - Length of Stay Prediction",
+    page_icon="🏥",
+    layout="wide",
+    initial_sidebar_state="auto"
+)
+
+# API URL - support both local and deployed
 API_URL = os.getenv("CLINICOPS_API_URL", "http://localhost:8000")
 
 # ==============================================================================
