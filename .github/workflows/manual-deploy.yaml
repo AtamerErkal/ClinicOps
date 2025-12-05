@@ -192,13 +192,11 @@ jobs:
       - name: 13. Deploy UI Container
         run: |
                 TAG="${{ steps.build_ui.outputs.NEW_TAG }}"
-                
-                # API Container'ının iç ağdaki adı (API bağlantı sorununu çözer)
                 API_INTERNAL_NAME="${{ env.ACI_API_PREFIX }}-${TAG}"
                 
                 echo "🚀 Deploying UI container (${{ env.ACI_UI_NAME }})..."
                 
-                # az container create komutunu shell hatasına karşı daha dayanıklı hale getiriyoruz
+                # NOT: Komut zincirini kırmamak için aşağıdaki blokta araya yorum satırı eklemeyin.
                 az container create \
                   --resource-group ${{ env.RG_NAME }} \
                   --name ${{ env.ACI_UI_NAME }} \
@@ -210,15 +208,13 @@ jobs:
                   --cpu 1 --memory 1.5 \
                   --os-type Linux \
                   --location ${{ env.LOCATION }} \
-                  
-                  # Port ve IP ayarları tek satırda toplanmıştır (Mobil erişim sorununun çözümü)
-                  --ip Public --ports 80 --target-port 7860 \
-                  
-                  # Ortam değişkenleri tek satırda toplanmıştır (API bağlantı sorununun çözümü)
+                  --ip Public \
+                  --ports 80 \
+                  --target-port 7860 \
                   --environment-variables CLINICOPS_API_URL="http://$API_INTERNAL_NAME:8000" \
                   --restart-policy Always
                 
-                sleep 30  # Konteynerin tam olarak başlaması için bekliyoruz
+                sleep 30
                 
                 UI_FQDN=$(az container show -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }} --query ipAddress.fqdn -o tsv)
                 
@@ -227,7 +223,7 @@ jobs:
                 echo "✅ DEPLOYMENT COMPLETE!"
                 echo "=========================================="
                 echo "🔗 API: http://$API_INTERNAL_NAME.${{ env.LOCATION }}.azurecontainer.io:8000/health"
-                echo "🔗 UI:  http://$UI_FQDN" # Port 80'de çalıştığı için port numarası yok
+                echo "🔗 UI:  http://$UI_FQDN"
                 echo "=========================================="
             
       - name: 14. Verify Deployment
