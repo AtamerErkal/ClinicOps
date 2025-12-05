@@ -169,29 +169,25 @@ jobs:
       - name: 12. Build and Push UI Docker Image
         id: build_ui
         run: |
-          NEW_TAG="${{ steps.tag.outputs.NEW_TAG }}"
-          if [ -z "$NEW_TAG" ]; then
             NEW_TAG=$(date +%Y%m%d%H%M%S)
-            echo "steps.tag yok → otomatik TAG: $NEW_TAG"
-          fi
-          
-          UI_IMAGE="${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:$NEW_TAG"
-          
-          echo "Building UI Docker image → $UI_IMAGE"
-          
-          docker build -f app/Dockerfile -t "$UI_IMAGE" .
-          
-          echo "Logging in to ACR..."
-          docker login ${{ env.ACR_LOGIN_SERVER }} \
-            -u ${{ env.ACR_USERNAME }} \
-            -p ${{ env.ACR_PASSWORD }}
-          
-          echo "Pushing UI image..."
-          docker push "$UI_IMAGE"
-          
-          echo "UI_IMAGE=$UI_IMAGE" >> $GITHUB_OUTPUT
-          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
-          echo "UI deployed with tag: $NEW_TAG"
+            UI_IMAGE="${{ env.ACR_LOGIN_SERVER }}/clinicops-ui:$NEW_TAG"
+            
+            echo "🐳 Building UI image: $UI_IMAGE"
+            
+            # Build with root as context, Dockerfile in app/
+            docker build -f app/Dockerfile -t "$UI_IMAGE" .
+            
+            echo "🔐 Logging in to ACR..."
+            docker login ${{ env.ACR_LOGIN_SERVER }} \
+              -u ${{ env.ACR_USERNAME }} \
+              -p ${{ env.ACR_PASSWORD }}
+            
+            echo "⬆️ Pushing image..."
+            docker push "$UI_IMAGE"
+            
+            echo "UI_IMAGE=$UI_IMAGE" >> $GITHUB_OUTPUT
+            echo "NEW_TAG=$NEW_TAG" >> $GITHUB_OUTPUT
+            echo "✅ UI image built: $NEW_TAG"
 
       - name: 13. Deploy UI Container
         run: |
