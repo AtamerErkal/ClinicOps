@@ -137,6 +137,7 @@ jobs:
           
           echo "🚀 Deploying API: $ACI_NAME"
           
+          # KRİTİK DÜZELTME: --ip Public eklendi. FQDN'in çalışması için zorunludur.
           az container create \
             --resource-group ${{ env.RG_NAME }} \
             --name $ACI_NAME \
@@ -151,10 +152,10 @@ jobs:
             --os-type Linux \
             --restart-policy Always \
             --location ${{ env.LOCATION }} \
-            --environment-variables \
-              MLFLOW_RUN_ID="$RUN_ID" \
-              AZURE_STORAGE_ACCOUNT="${{ env.STORAGE_ACCOUNT }}" \
+            --ip Public \
+            --environment-variables MLFLOW_RUN_ID="$RUN_ID" \
               AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              AZURE_STORAGE_ACCOUNT="${{ env.STORAGE_ACCOUNT }}" \
               AZURE_STORAGE_KEY="${{ secrets.AZURE_STORAGE_KEY }}" \
               AZURE_SUBSCRIPTION_ID="${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
               CONTAINER_NAME="${{ env.CONTAINER_NAME }}" \
