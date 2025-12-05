@@ -167,6 +167,9 @@ jobs:
           FQDN=$(az container show -g ${{ env.RG_NAME }} -n $ACI_NAME --query ipAddress.fqdn -o tsv)
           echo "🌐 API URL: http://${FQDN}:8000"
 
+          echo "⏳ Waiting 10 seconds for API DNS registration..."
+          sleep 10
+
       - name: 12. Build and Push UI Docker Image
         id: build_ui
         run: |
@@ -192,19 +195,20 @@ jobs:
 
       - name: 13. Deploy UI Container
         run: |
-            TAG="${{ steps.build_ui.outputs.NEW_TAG }}"
+            # KRİTİK DÜZELTME: API'nin FQDN'ini oluşturmak için API'nin TAG'ini kullan
+            API_TAG="${{ steps.build_api.outputs.NEW_TAG }}"
+            UI_TAG="${{ steps.build_ui.outputs.NEW_TAG }}"
             
-            # API'nin Public FQDN'ini hesaplıyoruz (NameResolutionError'u çözer)
-            API_FQDN="${{ env.ACI_API_PREFIX }}-${TAG}.${{ env.LOCATION }}.azurecontainer.io"
+            # API'nin Public FQDN'ini API TAG'ini kullanarak hesaplıyoruz (NameResolutionError'u çözer)
+            API_FQDN="${{ env.ACI_API_PREFIX }}-${API_TAG}.${{ env.LOCATION }}.azurecontainer.io"
             
             echo "🚀 Deploying UI container (${{ env.ACI_UI_NAME }})..."
             
-            # Bu blok, shell hatası olmaması için kesinlikle yorum ve boş satır İÇERMEMELİDİR.
             az container create \
               --resource-group ${{ env.RG_NAME }} \
               --name ${{ env.ACI_UI_NAME }} \
               --image ${{ steps.build_ui.outputs.UI_IMAGE }} \
-              --dns-name-label clinicops-ui-$TAG \
+              --dns-name-label clinicops-ui-$UI_TAG \
               --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
               --registry-username ${{ env.ACR_USERNAME }} \
               --registry-password ${{ env.ACR_PASSWORD }} \
