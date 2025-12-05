@@ -7,11 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements from parent directory (root)
-COPY ../requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy frontend from current directory (app/)
-COPY frontend_v3.py .
+COPY app/frontend_v3.py .
 
 # Streamlit config
 RUN mkdir -p /root/.streamlit && \
