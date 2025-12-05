@@ -234,21 +234,49 @@ jobs:
             
       - name: 14. Verify Deployment
         run: |
-            TAG="${{ steps.build_ui.outputs.NEW_TAG }}"
-            UI_FQDN="clinicops-ui-$TAG.${{ env.LOCATION }}.azurecontainer.io"
-            
-            echo "🔍 Testing UI endpoint..."
-            for i in {1..10}; do
-              if curl -f -s "http://$UI_FQDN:7860" > /dev/null; then
-                echo "✅ UI is accessible!"
-                exit 0
-              fi
-              echo "⏳ Attempt $i/10 - waiting..."
-              sleep 10
-            done
-            
-            echo "⚠️ UI not accessible, checking logs..."
-            az container logs -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }}
+          # API'nin TAG'ini kullanarak API Container Adı ve FQDN'i al
+          API_TAG="${{ steps.build_api.outputs.NEW_TAG }}"
+          API_ACI_NAME="${{ env.ACI_API_PREFIX }}-${API_TAG}"
+          API_FQDN="${{ env.ACI_API_PREFIX }}-${API_TAG}.${{ env.LOCATION }}.azurecontainer.io"
+          
+          UI_TAG="${{ steps.build_ui.outputs.NEW_TAG }}"
+          UI_FQDN="clinicops-ui-$UI_TAG.${{ env.LOCATION }}.azurecontainer.io"
+          
+          echo "🔍 Testing API health endpoint (http://$API_FQDN:8000/health)..."
+          API_HEALTH_URL="http://$API_FQDN:8000/health"
+          
+          # Önce, API'nin başlaması için 10 deneme (100 saniye) bekle
+          for i in {1..10}; do
+            # curl -f -s: Fails silently on error, -s for silent
+            if curl -f -s "$API_HEALTH_URL" > /dev/null; then
+              echo "✅ API is healthy!"
+              break
+            fi
+            echo "⏳ Attempt $i/10 - Waiting for API to start..."
+            sleep 10
+            if [ $i -eq 10 ]; then
+              echo "❌ API failed to start after 100 seconds. Checking API logs."
+              echo "=== API LOGS ($API_ACI_NAME) ==="
+              az container logs -g ${{ env.RG_NAME }} -n $API_ACI_NAME
+              exit 1 # API başlamazsa iş akışını durdur
+            fi
+          done
+          
+          echo "🔍 Testing UI endpoint (http://$UI_FQDN:7860)..."
+          # API sağlamsa, UI'ın başlaması için 10 deneme bekle
+          for i in {1..10}; do
+            if curl -f -s "http://$UI_FQDN:7860" > /dev/null; then
+              echo "✅ UI is accessible! Deployment successful."
+              exit 0
+            fi
+            echo "⏳ Attempt $i/10 - waiting for UI..."
+            sleep 10
+          done
+          
+          echo "⚠️ UI not accessible, checking UI logs..."
+          echo "=== UI LOGS (${{ env.ACI_UI_NAME}}) ==="
+          az container logs -g ${{ env.RG_NAME }} -n ${{ env.ACI_UI_NAME }}
+          exit 1
 
 
   # ========================================
