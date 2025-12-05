@@ -6,11 +6,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# Copy requirements from parent directory (root)
+COPY ../requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy frontend from current directory (app/)
 COPY frontend_v3.py .
 
+# Streamlit config
 RUN mkdir -p /root/.streamlit && \
     echo '[server]\n\
 port = 7860\n\
