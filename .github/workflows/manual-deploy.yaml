@@ -192,7 +192,9 @@ jobs:
       - name: 13. Deploy UI Container
         run: |
                 TAG="${{ steps.build_ui.outputs.NEW_TAG }}"
-                API_INTERNAL_NAME="${{ env.ACI_API_PREFIX }}-${TAG}"
+                
+                # DÜZELTME: API'nin İç Ağ Adı yerine Public FQDN'i kullanılıyor (NameResolutionError'u çözer)
+                API_FQDN="${{ env.ACI_API_PREFIX }}-${TAG}.${{ env.LOCATION }}.azurecontainer.io"
                 
                 echo "🚀 Deploying UI container (${{ env.ACI_UI_NAME }})..."
                 
@@ -209,7 +211,9 @@ jobs:
                   --location ${{ env.LOCATION }} \
                   --ip Public \
                   --ports 7860 \
-                  --environment-variables CLINICOPS_API_URL="http://$API_INTERNAL_NAME:8000" \
+                  
+                  # Burası artık Public FQDN kullanıyor
+                  --environment-variables CLINICOPS_API_URL="http://$API_FQDN:8000" \
                   --restart-policy Always
                 
                 sleep 30
@@ -220,7 +224,7 @@ jobs:
                 echo "=========================================="
                 echo "✅ DEPLOYMENT COMPLETE!"
                 echo "=========================================="
-                echo "🔗 API: http://$API_INTERNAL_NAME.${{ env.LOCATION }}.azurecontainer.io:8000/health"
+                echo "🔗 API: http://$API_FQDN:8000/health"
                 echo "🔗 UI:  http://$UI_FQDN:7860"
                 echo "=========================================="
             
