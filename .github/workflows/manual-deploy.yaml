@@ -192,9 +192,11 @@ jobs:
       - name: 13. Deploy UI Container
         run: |
             TAG="${{ steps.build_ui.outputs.NEW_TAG }}"
-            API_FQDN="clinicops-api-$TAG.${{ env.LOCATION }}.azurecontainer.io"
             
-            echo "🚀 Deploying UI container..."
+            # API Container'ının iç ağdaki adı (Step 11'de kullanılan ACI_NAME'e karşılık gelir)
+            API_INTERNAL_NAME="${{ env.ACI_API_PREFIX }}-${TAG}"
+            
+            echo "🚀 Deploying UI container (${{ env.ACI_UI_NAME }})..."
             
             az container create \
               --resource-group ${{ env.RG_NAME }} \
@@ -206,9 +208,15 @@ jobs:
               --registry-password ${{ env.ACR_PASSWORD }} \
               --cpu 1 --memory 1.5 \
               --os-type Linux --location ${{ env.LOCATION }} \
-              --ip-address Public --ports 7860 \
+              
+              # Düzeltme 2: Mobil Erişim için Port 80'i 7860'a yönlendiriyoruz
+              --ip-address Public \
+              --ports 80 \
+              --target-port 7860 \
+              
               --environment-variables \
-                CLINICOPS_API_URL="http://$API_FQDN:8000" \
+                # Düzeltme 1: API bağlantısı için iç ağ adını kullanıyoruz
+                CLINICOPS_API_URL="http://$API_INTERNAL_NAME:8000" \
               --restart-policy Always
             
             sleep 30  # Wait for container to fully start
@@ -219,8 +227,9 @@ jobs:
             echo "=========================================="
             echo "✅ DEPLOYMENT COMPLETE!"
             echo "=========================================="
-            echo "🔗 API: http://$API_FQDN:8000/health"
-            echo "🔗 UI:  http://$UI_FQDN:7860"
+            # FQDN artık standart HTTP portu (80) üzerinden çalışacak, port belirtmeye gerek yok
+            echo "🔗 API: http://$API_INTERNAL_NAME.${{ env.LOCATION }}.azurecontainer.io:8000/health"
+            echo "🔗 UI:  http://$UI_FQDN"
             echo "=========================================="
             
       - name: 14. Verify Deployment
